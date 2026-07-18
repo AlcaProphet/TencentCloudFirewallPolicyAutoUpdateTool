@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -181,6 +182,63 @@ func TestBuildExpectedRules_TCPPlusUDP(t *testing.T) {
 	}
 	if *rules[1].Protocol != "UDP" {
 		t.Errorf("第二条应为 UDP，实际 %s", *rules[1].Protocol)
+	}
+}
+
+func TestTruncateDescription(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix string
+		detail string
+		max    int
+		want   string
+	}{
+		{"不截断", "[auto-dns:api.example.com]", "TCP 443", 50, "[auto-dns:api.example.com] TCP 443"},
+		{"刚好等于50", "[auto-dns:abc]", "12345678901234567890123456789012345", 50,
+			"[auto-dns:abc] 12345678901234567890123456789012345"},
+		{"超长截断", "[auto-dns:api.example.com]", "TCP 443,80,8080,8443,9090 EXTRA", 50,
+			"[auto-dns:api.example.com] TCP 443,8...(truncated)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateDescription(tt.prefix, tt.detail, tt.max)
+			if len(got) > tt.max {
+				t.Errorf("截断结果长度 %d 超过限制 %d: %s", len(got), tt.max, got)
+			}
+			// 验证前缀未被截断
+			if !strings.HasPrefix(got, tt.prefix) {
+				t.Errorf("前缀被截断: %q", got)
+			}
+			if got != tt.want {
+				t.Errorf("truncateDescription() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildDescription(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefix   string
+		comment  string
+		protocol string
+		port     string
+		want     string
+	}{
+		{"无备注", "[auto-dns:api.example.com]", "", "TCP", "443",
+			"[auto-dns:api.example.com] TCP 443"},
+		{"有备注", "[auto-dns:api.example.com]", "生产API", "TCP", "443",
+			"[auto-dns:api.example.com] 生产API TCP 443"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildDescription(tt.prefix, tt.comment, tt.protocol, tt.port)
+			if got != tt.want {
+				t.Errorf("buildDescription() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

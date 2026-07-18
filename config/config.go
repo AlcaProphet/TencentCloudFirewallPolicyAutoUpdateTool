@@ -14,8 +14,9 @@ import (
 type DomainRule struct {
 	Host     string // 域名，如 api.example.com
 	Protocol string // TCP / UDP / TCP+UDP
-	Ports    string // 逗号分隔端口号 或 *
+	Ports    string // 逗号分隔端口号 或 ALL
 	Action   string // ACCEPT / DROP
+	Comment  string // 可选备注，用于 FirewallRuleDescription
 }
 
 // Config 应用配置
@@ -104,7 +105,7 @@ func getEnv(key, defaultVal string) string {
 	return defaultVal
 }
 
-// parseDomainRules 解析 "host|proto|ports|action;..." 格式
+// parseDomainRules 解析 "host|proto|ports|action[|comment];..." 格式
 func parseDomainRules(raw string) ([]DomainRule, error) {
 	segments := strings.Split(raw, ";")
 	var rules []DomainRule
@@ -115,9 +116,14 @@ func parseDomainRules(raw string) ([]DomainRule, error) {
 			continue
 		}
 
-		parts := strings.SplitN(seg, "|", 4)
-		if len(parts) != 4 {
-			return nil, fmt.Errorf("第 %d 条规则格式错误，期望 host|protocol|ports|action，实际: %s", i+1, seg)
+		parts := strings.SplitN(seg, "|", 5)
+		if len(parts) < 4 {
+			return nil, fmt.Errorf("第 %d 条规则格式错误，期望 host|protocol|ports|action[|comment]，实际: %s", i+1, seg)
+		}
+
+		comment := ""
+		if len(parts) >= 5 {
+			comment = strings.TrimSpace(parts[4])
 		}
 
 		rule := DomainRule{
@@ -125,6 +131,7 @@ func parseDomainRules(raw string) ([]DomainRule, error) {
 			Protocol: strings.TrimSpace(parts[1]),
 			Ports:    strings.TrimSpace(parts[2]),
 			Action:   strings.TrimSpace(parts[3]),
+			Comment:  comment,
 		}
 
 		// 校验 hostname
@@ -146,13 +153,13 @@ func parseDomainRules(raw string) ([]DomainRule, error) {
 			return nil, fmt.Errorf("第 %d 条规则动作不合法: %s（仅支持 ACCEPT/DROP）", i+1, rule.Action)
 		}
 
-		// 校验端口号（* 表示全部端口）
-		if rule.Ports != "*" {
+		// 校验端口号（ALL 表示全部端口，遵循腾讯云 API 规范）
+		if rule.Ports != "ALL" {
 			for _, portStr := range strings.Split(rule.Ports, ",") {
 				portStr = strings.TrimSpace(portStr)
 				port, err := strconv.Atoi(portStr)
 				if err != nil || port < 1 || port > 65535 {
-					return nil, fmt.Errorf("第 %d 条规则端口不合法: %s（应为 1-65535 或 *）", i+1, portStr)
+					return nil, fmt.Errorf("第 %d 条规则端口不合法: %s（应为 1-65535 或 ALL）", i+1, portStr)
 				}
 			}
 		}

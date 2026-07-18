@@ -75,21 +75,22 @@ docker logs -f fwalizer
 ### DOMAIN_RULES 格式
 
 ```
-host|protocol|ports|action;host|protocol|ports|action;...
+host|protocol|ports|action[|comment];host|protocol|ports|action[|comment];...
 ```
 
 | 字段 | 可选值 | 说明 |
 |------|--------|------|
 | `host` | 域名 | 如 `api.example.com` |
 | `protocol` | `TCP` / `UDP` / `TCP+UDP` | 协议类型 |
-| `ports` | `443,80` / `*` | 端口号（逗号分隔）或 `*` 全部 |
+| `ports` | `443,80` / `ALL` | 端口号（逗号分隔）或 `ALL` 全部 |
 | `action` | `ACCEPT` / `DROP` | 匹配动作 |
+| `comment` | 任意文本 | 可选备注，写入 `FirewallRuleDescription` |
 
 示例：
 ```env
-# 放行 api.example.com 的 TCP 443 和 80
+# 放行 api.example.com 的 TCP 443 和 80（备注：生产API）
 # 放行 cdn.example.com 的 TCP+UDP 443
-DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT;cdn.example.com|TCP+UDP|443|ACCEPT
+DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT|生产API;cdn.example.com|TCP+UDP|443|ACCEPT
 ```
 
 ---
@@ -140,6 +141,7 @@ TencentCloudFirewallTool/
 │   ├── client.go                # Lighthouse SDK 封装
 │   ├── rule.go                  # 规则对比 & diff 逻辑
 │   └── sync.go                  # 定时同步主循环
+├── TencentAPIGuide/             # 腾讯云 Lighthouse API & Go SDK 官方文档
 ├── .github/workflows/
 │   └── docker-publish.yml       # CI/CD（自动构建 + 推送 ghcr.io）
 └── Ref/                         # API 文档 & SDK 参考

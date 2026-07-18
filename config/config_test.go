@@ -17,7 +17,7 @@ func TestParseDomainRules(t *testing.T) {
 		{"单条UDP规则", "dns.example.com|UDP|53|ACCEPT", 1, false},
 		{"TCP+UDP规则", "cdn.example.com|TCP+UDP|443|ACCEPT", 1, false},
 		{"多条规则", "api.example.com|TCP|443|ACCEPT;cdn.example.com|UDP|53|ACCEPT", 2, false},
-		{"全端口", "api.example.com|TCP|*|ACCEPT", 1, false},
+		{"全端口", "api.example.com|TCP|ALL|ACCEPT", 1, false},
 		{"DROP动作", "bad.example.com|TCP|80|DROP", 1, false},
 		{"空字符串", "", 0, true},
 		{"缺少字段", "api.example.com|TCP|443", 0, true},
@@ -26,6 +26,8 @@ func TestParseDomainRules(t *testing.T) {
 		{"无效端口", "api.example.com|TCP|99999|ACCEPT", 0, true},
 		{"负数端口", "api.example.com|TCP|-1|ACCEPT", 0, true},
 		{"端口为0", "api.example.com|TCP|0|ACCEPT", 0, true},
+		{"带备注", "api.example.com|TCP|443|ACCEPT|生产API", 1, false},
+		{"备注含空格", "api.example.com|TCP|443|ACCEPT|API Gateway", 1, false},
 	}
 
 	for _, tt := range tests {

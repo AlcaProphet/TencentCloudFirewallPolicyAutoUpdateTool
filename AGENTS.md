@@ -43,7 +43,8 @@
 
 ### 4. 乐观锁约束
 
-- 利用 API 返回的 `FirewallVersion` 检测并发冲突
+- 通过重新 Describe + Diff 实现乐观锁：每次写入前重新拉取最新规则状态
+- 不传入 `FirewallVersion` 参数（由腾讯云 API 自行管理版本号，避免版本冲突错误）
 - 写入失败时自动重试（最多 3 次，指数退避）
 - 重试步骤：重新 Describe → 重新 diff → 重新 Create/Delete
 
@@ -86,17 +87,18 @@ DNS_SERVER=8.8.8.8:53      # 可选，DNS 服务器
 ### DOMAIN_RULES 格式
 
 ```
-host|protocol|ports|action;host|protocol|ports|action;...
+host|protocol|ports|action[|comment];host|protocol|ports|action[|comment];...
 ```
 
 - `host`: 域名（如 `api.example.com`）
 - `protocol`: `TCP` / `UDP` / `TCP+UDP`
-- `ports`: 逗号分隔端口号（如 `443,80`）或 `*`（所有端口）
+- `ports`: 逗号分隔端口号（如 `443,80`）或 `ALL`（所有端口，遵循腾讯云 API 规范）
 - `action`: `ACCEPT` / `DROP`
+- `comment`: 可选备注，写入 `FirewallRuleDescription`，用于人类识别（总长 ≤ 50 字节，超出自动截断）
 
 示例：
 ```
-DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT;cdn.example.com|TCP|443|ACCEPT
+DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT|生产API;cdn.example.com|TCP|443|ACCEPT
 ```
 
 ## 项目结构
@@ -122,8 +124,7 @@ TencentCloudFirewallTool/
 ├── firewall/
 │   ├── client.go                # Lighthouse SDK 封装
 │   ├── rule.go                  # 规则对比 & diff 逻辑
-│   └── sync.go                  # 同步调度主循环
-└── Ref/                         # API 文档 & SDK 参考
+│   └── sync.go                  # 同步调度主循环├── TencentAPIGuide/             # 腾讯云 Lighthouse API & Go SDK 官方文档└── Ref/                         # API 文档 & SDK 参考
     └── tencentcloud-sdk-go/     # 腾讯云 Go SDK（本地克隆）
 ```
 
@@ -136,3 +137,4 @@ TencentCloudFirewallTool/
 - **所有错误必须处理**，不可忽略 `error` 返回值
 - **日志使用 `log/slog`**（Go 1.21+ 内置结构化日志）
 - **注释使用中文**（面向国内开发者）
+- **API 调用需遵守 `TencentAPIGuide/` 中的官方文档要求**（参数格式、字段长度限制、频率限制等）

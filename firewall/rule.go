@@ -48,25 +48,56 @@ func toKey(r *lighthouse.FirewallRuleInfo) ruleKey {
 }
 
 // buildExpectedRules 根据 DNS 解析结果构建期望的规则列表
-// 描述格式: [RULE_TAG:hostname] Protocol Port
+// 描述格式: [RULE_TAG:hostname] [comment] Protocol Port，总长不超过 50 字节
 func buildExpectedRules(resolved []dns.ResolvedIP, rule config.DomainRule, desc string) []*lighthouse.FirewallRule {
 	var rules []*lighthouse.FirewallRule
 
 	for _, ip := range resolved {
-		// 根据协议类型生成规则
 		switch rule.Protocol {
 		case "TCP":
-			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action, desc+" TCP "+rule.Ports))
+			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action,
+				buildDescription(desc, rule.Comment, "TCP", rule.Ports)))
 		case "UDP":
-			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action, desc+" UDP "+rule.Ports))
+			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action,
+				buildDescription(desc, rule.Comment, "UDP", rule.Ports)))
 		case "TCP+UDP":
-			// TCP+UDP 生成两条独立规则
-			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action, desc+" TCP "+rule.Ports))
-			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action, desc+" UDP "+rule.Ports))
+			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action,
+				buildDescription(desc, rule.Comment, "TCP", rule.Ports)))
+			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action,
+				buildDescription(desc, rule.Comment, "UDP", rule.Ports)))
 		}
 	}
 
 	return rules
+}
+
+// buildDescription 构建规则描述: [prefix] [comment] Protocol Port
+// prefix（[RULE_TAG:hostname]）不会被截断，仅截断 comment + Protocol + Port 部分
+func buildDescription(prefix, comment, protocol, port string) string {
+	detail := protocol + " " + port
+	if comment != "" {
+		detail = comment + " " + detail
+	}
+	return truncateDescription(prefix, detail, 50)
+}
+
+// truncateDescription 截断描述文本，prefix 不会被截断（ownedRules 依赖它做匹配）
+// 仅截断 detail 部分，超出 maxBytes 时追加 "...(truncated)"
+func truncateDescription(prefix, detail string, maxBytes int) string {
+	full := prefix + " " + detail
+	if len(full) <= maxBytes {
+		return full
+	}
+	suffix := "...(truncated)"
+	prefixLen := len(prefix) + 1 // +1 为 prefix 和 detail 之间的空格
+	available := maxBytes - prefixLen - len(suffix)
+	if available < 1 {
+		available = 1
+	}
+	if available > len(detail) {
+		available = len(detail)
+	}
+	return prefix + " " + detail[:available] + suffix
 }
 
 // makeRule 创建单条防火墙规则
