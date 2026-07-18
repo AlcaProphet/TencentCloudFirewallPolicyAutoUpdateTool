@@ -1,5 +1,5 @@
 # ─── 构建阶段 ───
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
 
@@ -22,7 +22,8 @@ COPY --from=builder /fwalizer /usr/local/bin/fwalizer
 
 USER appuser
 
+# Alpine 不含 pidof，使用 killall -0 检测进程存活
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD pidof fwalizer || exit 1
+    CMD killall -0 fwalizer || exit 1
 
 ENTRYPOINT ["/usr/local/bin/fwalizer"]

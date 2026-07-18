@@ -1,6 +1,6 @@
 # 🔐 FWAlizer — Firewall DNS Synchronizer
 
-[![Docker Build & Publish](https://github.com/your-username/fwalizer/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/your-username/fwalizer/actions/workflows/docker-publish.yml)
+[![Docker Build & Publish](https://github.com/alcaprophet/fwalizer/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/alcaprophet/fwalizer/actions/workflows/docker-publish.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **FWAlizer** 是一个轻量级自动化工具，运行在 Docker 容器中，通过 DNS 解析指定域名的 IP 地址，并自动将解析结果同步到**腾讯云 Lighthouse 防火墙**白名单中。
@@ -12,7 +12,7 @@
 ## ✨ 特性
 
 - 🚀 **自动同步**：定时 DNS 解析 → 自动更新防火墙白名单
-- 📦 **Docker 一键部署**：`docker run -d --env-file .env ghcr.io/your-username/fwalizer:latest`
+- 📦 **Docker 一键部署**：`docker run -d --env-file .env ghcr.io/alcaprophet/fwalizer:latest`
 - 🔒 **安全隔离**：仅管理标记为 `[auto-dns:xxx]` 的规则，不影响其他防火墙规则
 - 🌐 **IPv4 + IPv6**：同时支持 A 记录和 AAAA 记录
 - 🛡️ **乐观锁**：自动处理版本冲突，最多重试 3 次
@@ -48,7 +48,7 @@ docker run -d \
   --name fwalizer \
   --env-file .env \
   --restart=always \
-  ghcr.io/your-username/fwalizer:latest
+  ghcr.io/alcaprophet/fwalizer:latest
 ```
 
 ### 3. 查看日志
@@ -95,6 +95,12 @@ DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT;cdn.example.com|TCP+UDP|443|ACCEP
 ---
 
 ## 🏗️ 本地开发
+
+> **Windows 用户注意**：Makefile 中的命令（`rm`、`docker` 等）需要 **WSL2** 或 **Git Bash** 环境运行。也可直接用 Go 命令替代：
+> ```powershell
+> go build -ldflags="-s -w" -o fwalizer.exe .
+> docker build -t fwalizer .
+> ```
 
 ```bash
 # 编译

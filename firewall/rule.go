@@ -7,8 +7,8 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	lighthouse "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse/v20200324"
 
-	"github.com/your-username/fwalizer/config"
-	"github.com/your-username/fwalizer/dns"
+	"fwalizer/config"
+	"fwalizer/dns"
 )
 
 // ruleKey 规则唯一标识 = protocol + port + cidrBlock + ipv6CidrBlock + action
@@ -48,53 +48,41 @@ func toKey(r *lighthouse.FirewallRuleInfo) ruleKey {
 }
 
 // buildExpectedRules 根据 DNS 解析结果构建期望的规则列表
-func buildExpectedRules(hostname string, resolved []dns.ResolvedIP, rule config.DomainRule, desc string) []*lighthouse.FirewallRule {
+// 描述格式: [RULE_TAG:hostname] Protocol Port
+func buildExpectedRules(resolved []dns.ResolvedIP, rule config.DomainRule, desc string) []*lighthouse.FirewallRule {
 	var rules []*lighthouse.FirewallRule
 
 	for _, ip := range resolved {
-		r := &lighthouse.FirewallRule{
-			Action:                  common.StringPtr(rule.Action),
-			FirewallRuleDescription: common.StringPtr(desc),
-		}
-
-		if ip.IsIPv6 {
-			r.Ipv6CidrBlock = common.StringPtr(ip.Address + "/128")
-		} else {
-			r.CidrBlock = common.StringPtr(ip.Address + "/32")
-		}
-
 		// 根据协议类型生成规则
 		switch rule.Protocol {
 		case "TCP":
-			r.Protocol = common.StringPtr("TCP")
-			r.Port = common.StringPtr(rule.Ports)
+			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action, desc+" TCP "+rule.Ports))
 		case "UDP":
-			r.Protocol = common.StringPtr("UDP")
-			r.Port = common.StringPtr(rule.Ports)
+			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action, desc+" UDP "+rule.Ports))
 		case "TCP+UDP":
-			// TCP+UDP 需要生成两条独立规则
-			tcpRule := &lighthouse.FirewallRule{
-				Protocol:                common.StringPtr("TCP"),
-				Port:                    common.StringPtr(rule.Ports),
-				Action:                  common.StringPtr(rule.Action),
-				FirewallRuleDescription: common.StringPtr(desc + " TCP"),
-			}
-			if ip.IsIPv6 {
-				tcpRule.Ipv6CidrBlock = common.StringPtr(ip.Address + "/128")
-			} else {
-				tcpRule.CidrBlock = common.StringPtr(ip.Address + "/32")
-			}
-			rules = append(rules, tcpRule)
-
-			r.Protocol = common.StringPtr("UDP")
-			r.Port = common.StringPtr(rule.Ports)
-			r.FirewallRuleDescription = common.StringPtr(desc + " UDP")
+			// TCP+UDP 生成两条独立规则
+			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action, desc+" TCP "+rule.Ports))
+			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action, desc+" UDP "+rule.Ports))
 		}
-
-		rules = append(rules, r)
 	}
 
 	return rules
+}
+
+// makeRule 创建单条防火墙规则
+func makeRule(ip dns.ResolvedIP, protocol, port, action, description string) *lighthouse.FirewallRule {
+	r := &lighthouse.FirewallRule{
+		Protocol:                common.StringPtr(protocol),
+		Port:                    common.StringPtr(port),
+		Action:                  common.StringPtr(action),
+		FirewallRuleDescription: common.StringPtr(description),
+	}
+	if ip.IsIPv6 {
+		r.Ipv6CidrBlock = common.StringPtr(ip.Address + "/128")
+	} else {
+		r.CidrBlock = common.StringPtr(ip.Address + "/32")
+	}
+	return r
 }
 
 // toFirewallRule 将 FirewallRuleInfo 转为可用于 Delete 的 FirewallRule
@@ -110,7 +98,6 @@ func toFirewallRule(info *lighthouse.FirewallRuleInfo) *lighthouse.FirewallRule 
 
 // Diff 计算需要添加和删除的规则
 func Diff(
-	hostname string,
 	resolved []dns.ResolvedIP,
 	rule config.DomainRule,
 	desc string,
@@ -118,7 +105,7 @@ func Diff(
 ) (toAdd []*lighthouse.FirewallRule, toDelete []*lighthouse.FirewallRule) {
 
 	// 期望集合
-	expected := buildExpectedRules(hostname, resolved, rule, desc)
+	expected := buildExpectedRules(resolved, rule, desc)
 	expectedKeys := make(map[ruleKey]bool)
 	for _, r := range expected {
 		expectedKeys[ruleKey{
@@ -159,7 +146,7 @@ func Diff(
 	}
 
 	slog.Info("规则 diff 完成",
-		"hostname", hostname,
+		"hostname", rule.Host,
 		"expected", len(expected),
 		"existing", len(existing),
 		"toAdd", len(toAdd),

@@ -5,10 +5,8 @@ import (
 	"sync"
 	"time"
 
-	lighthouse "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse/v20200324"
-
-	"github.com/your-username/fwalizer/config"
-	"github.com/your-username/fwalizer/dns"
+	"fwalizer/config"
+	"fwalizer/dns"
 )
 
 // Syncer 定时同步器
@@ -67,23 +65,16 @@ func (s *Syncer) Shutdown() {
 func (s *Syncer) syncAll() {
 	slog.Info("开始同步轮次")
 
-	// 1. 查询当前全量规则
-	allRules, _, err := s.client.GetRules(s.cfg.InstanceID)
-	if err != nil {
-		slog.Error("查询防火墙规则失败，跳过本轮", "error", err)
-		return
-	}
-
-	// 2. 逐个域名处理
+	// 逐个域名处理（每个域名内部独立 Describe + Diff + 重试）
 	for _, rule := range s.cfg.DomainRules {
-		s.syncDomain(rule, allRules)
+		s.syncDomain(rule)
 	}
 
 	slog.Info("同步轮次完成")
 }
 
 // syncDomain 同步单个域名的规则
-func (s *Syncer) syncDomain(rule config.DomainRule, allRules []*lighthouse.FirewallRuleInfo) {
+func (s *Syncer) syncDomain(rule config.DomainRule) {
 	desc := s.cfg.RuleDescription(rule.Host)
 
 	// 1. DNS 解析
@@ -98,37 +89,40 @@ func (s *Syncer) syncDomain(rule config.DomainRule, allRules []*lighthouse.Firew
 		return
 	}
 
-	// 2. 过滤本工具管理的、属于该域名的规则
-	owned := ownedRules(allRules, s.cfg.RuleTag, rule.Host)
-
-	// 3. diff 对比
-	toAdd, toDelete := Diff(rule.Host, resolved, rule, desc, owned)
-
-	// 4. 重试写入（最多 3 次）
-	if err := s.applyWithRetry(toAdd, toDelete, 3); err != nil {
+	// 2. diff 对比 + 重试写入（乐观锁，最多 3 次，每次重试前重新 Describe + Diff）
+	if err := s.applyWithRetry(rule.Host, rule, desc, resolved, 3); err != nil {
 		slog.Error("规则同步失败", "host", rule.Host, "error", err)
 	}
 }
 
-// applyWithRetry 带重试的规则写入
-func (s *Syncer) applyWithRetry(toAdd, toDelete []*lighthouse.FirewallRule, maxRetries int) error {
-	if len(toAdd) == 0 && len(toDelete) == 0 {
-		return nil
-	}
-
+// applyWithRetry 带重试的规则写入（乐观锁）
+// 重试流程：重新 Describe → 重新 diff → 重新 Create/Delete
+func (s *Syncer) applyWithRetry(hostname string, rule config.DomainRule, desc string, resolved []dns.ResolvedIP, maxRetries int) error {
 	var lastErr error
 	for i := range maxRetries {
 		if i > 0 {
 			backoff := time.Duration(1<<uint(i-1)) * time.Second
 			slog.Info("重试中...", "attempt", i+1, "backoff", backoff)
 			time.Sleep(backoff)
+		}
 
-			// 重新拉取规则以获取最新版本号
-			_, _, err := s.client.GetRules(s.cfg.InstanceID)
-			if err != nil {
-				lastErr = err
-				continue
-			}
+		// 重新拉取最新规则
+		allRules, _, err := s.client.GetRules(s.cfg.InstanceID)
+		if err != nil {
+			lastErr = err
+			slog.Warn("重新查询规则失败，将重试", "attempt", i+1, "error", err)
+			continue
+		}
+
+		// 重新过滤本工具管理的规则
+		owned := ownedRules(allRules, s.cfg.RuleTag, hostname)
+
+		// 重新 diff
+		toAdd, toDelete := Diff(resolved, rule, desc, owned)
+
+		if len(toAdd) == 0 && len(toDelete) == 0 {
+			slog.Info("规则已是最新，无需变更", "hostname", hostname)
+			return nil
 		}
 
 		// 先删后加，减少冲突窗口

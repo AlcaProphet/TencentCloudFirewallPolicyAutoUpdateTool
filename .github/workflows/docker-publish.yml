@@ -28,7 +28,13 @@ jobs:
       - name: 设置 Go 环境
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
+
+      - name: 更新 SDK 到最新版
+        run: |
+          go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common
+          go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse
+          go mod tidy
 
       - name: 编译检查
         run: go build -v ./...

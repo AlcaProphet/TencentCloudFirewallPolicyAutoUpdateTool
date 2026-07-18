@@ -1,6 +1,6 @@
-module github.com/your-username/fwalizer
+module fwalizer
 
-go 1.22
+go 1.25
 
 require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.137

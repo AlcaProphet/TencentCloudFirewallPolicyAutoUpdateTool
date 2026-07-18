@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -45,8 +47,16 @@ func Load() (*Config, error) {
 	if cfg.InstanceID == "" {
 		return nil, fmt.Errorf("LIGHTHOUSE_INSTANCE_ID 为必填项")
 	}
+	if !strings.HasPrefix(cfg.InstanceID, "lhins-") {
+		return nil, fmt.Errorf("LIGHTHOUSE_INSTANCE_ID 格式错误，应以 lhins- 开头，实际: %s", cfg.InstanceID)
+	}
 	if cfg.Region == "" {
 		return nil, fmt.Errorf("LIGHTHOUSE_REGION 为必填项")
+	}
+
+	// 校验 DNS_SERVER 格式
+	if _, _, err := net.SplitHostPort(cfg.DNSServer); err != nil {
+		return nil, fmt.Errorf("DNS_SERVER 格式错误（应为 host:port），实际: %s: %w", cfg.DNSServer, err)
 	}
 
 	// 解析 DOMAIN_RULES
@@ -123,6 +133,17 @@ func parseDomainRules(raw string) ([]DomainRule, error) {
 		case "ACCEPT", "DROP":
 		default:
 			return nil, fmt.Errorf("第 %d 条规则动作不合法: %s（仅支持 ACCEPT/DROP）", i+1, rule.Action)
+		}
+
+		// 校验端口号（* 表示全部端口）
+		if rule.Ports != "*" {
+			for _, portStr := range strings.Split(rule.Ports, ",") {
+				portStr = strings.TrimSpace(portStr)
+				port, err := strconv.Atoi(portStr)
+				if err != nil || port < 1 || port > 65535 {
+					return nil, fmt.Errorf("第 %d 条规则端口不合法: %s（应为 1-65535 或 *）", i+1, portStr)
+				}
+			}
 		}
 
 		rules = append(rules, rule)

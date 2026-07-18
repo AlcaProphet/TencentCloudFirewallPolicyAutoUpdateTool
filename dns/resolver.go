@@ -20,7 +20,9 @@ func New(server string) *Resolver {
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 				d := net.Dialer{Timeout: 10 * time.Second}
-				return d.DialContext(ctx, "udp", server)
+				// 尊重 Go Resolver 传入的 network（UDP 或 TCP），
+				// 当 DNS 响应超过 512 字节时 Go 会自动通过 TCP 重试
+				return d.DialContext(ctx, network, server)
 			},
 		},
 	}

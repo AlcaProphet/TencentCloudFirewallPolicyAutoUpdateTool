@@ -7,7 +7,7 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	lighthouse "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse/v20200324"
 
-	"github.com/your-username/fwalizer/config"
+	"fwalizer/config"
 )
 
 // Client 腾讯云 Lighthouse 防火墙客户端封装

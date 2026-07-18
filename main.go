@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/your-username/fwalizer/config"
-	"github.com/your-username/fwalizer/firewall"
+	"fwalizer/config"
+	"fwalizer/firewall"
 )
 
 func main() {
