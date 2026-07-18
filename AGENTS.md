@@ -8,7 +8,7 @@
 
 | 层 | 技术 | 说明 |
 |---|------|------|
-| 语言 | **Go 1.22+** | 单一二进制，无运行时依赖 |
+| 语言 | **Go 1.25+** | 单一二进制，无运行时依赖 |
 | SDK | `github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse` | 腾讯云国内站 Go SDK |
 | 部署 | **Docker** (alpine 3.20) | 多阶段构建，最终镜像约 14MB |
 | CI/CD | **GitHub Actions** | 自动编译 + 推送到 ghcr.io |
@@ -50,7 +50,7 @@
 ### 5. Docker 约束
 
 - 基础镜像：`alpine:3.20`
-- 编译镜像：`golang:1.22-alpine`
+- 编译镜像：`golang:1.25-alpine`
 - `CGO_ENABLED=0` 静态编译
 - 以非 root 用户运行（`adduser -D appuser`）
 - 仅暴露 stdout 日志（`docker logs` 查看）
@@ -130,7 +130,7 @@ TencentCloudFirewallTool/
 ## 开发约定
 
 - **模块路径**：`github.com/<owner>/fwalizer`（开源仓库地址）
-- **Go 版本**：`go 1.22`
+- **Go 版本**：`go 1.25`
 - **SDK 依赖**：`github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse`
 - **无外部框架依赖**：不使用 gin/echo 等 HTTP 框架，不使用 cron 库，尽量用标准库
 - **所有错误必须处理**，不可忽略 `error` 返回值

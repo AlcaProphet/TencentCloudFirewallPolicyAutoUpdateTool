@@ -31,23 +31,44 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-// GetRules 获取实例当前所有防火墙规则（单次最多 100 条）
+// GetRules 获取实例当前所有防火墙规则（自动分页，确保不漏数据）
 func (c *Client) GetRules(instanceID string) ([]*lighthouse.FirewallRuleInfo, uint64, error) {
-	req := lighthouse.NewDescribeFirewallRulesRequest()
-	req.InstanceId = common.StringPtr(instanceID)
-	req.Limit = common.Int64Ptr(100) // API 最大分页数，覆盖默认的 20
+	var allRules []*lighthouse.FirewallRuleInfo
+	var version uint64
+	offset := int64(0)
+	pageSize := int64(100) // API 单次最大返回数
 
-	resp, err := c.client.DescribeFirewallRules(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询防火墙规则失败: %w", err)
+	for {
+		req := lighthouse.NewDescribeFirewallRulesRequest()
+		req.InstanceId = common.StringPtr(instanceID)
+		req.Limit = common.Int64Ptr(pageSize)
+		req.Offset = common.Int64Ptr(offset)
+
+		resp, err := c.client.DescribeFirewallRules(req)
+		if err != nil {
+			return nil, 0, fmt.Errorf("查询防火墙规则失败: %w", err)
+		}
+
+		// 记录 FirewallVersion（每页一致，取最后一次即可）
+		if resp.Response.FirewallVersion != nil {
+			version = *resp.Response.FirewallVersion
+		}
+
+		allRules = append(allRules, resp.Response.FirewallRuleSet...)
+
+		// 判断是否已拉完所有规则
+		totalCount := int64(0)
+		if resp.Response.TotalCount != nil {
+			totalCount = *resp.Response.TotalCount
+		}
+
+		offset += int64(len(resp.Response.FirewallRuleSet))
+		if offset >= totalCount || len(resp.Response.FirewallRuleSet) == 0 {
+			break
+		}
 	}
 
-	version := uint64(0)
-	if resp.Response.FirewallVersion != nil {
-		version = *resp.Response.FirewallVersion
-	}
-
-	return resp.Response.FirewallRuleSet, version, nil
+	return allRules, version, nil
 }
 
 // CreateRules 批量添加防火墙规则

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -54,6 +55,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("LIGHTHOUSE_REGION 为必填项")
 	}
 
+	// 校验 RULE_TAG：仅允许字母、数字、连字符、下划线
+	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, cfg.RuleTag); !matched {
+		return nil, fmt.Errorf("RULE_TAG 包含非法字符（仅允许字母、数字、-、_），实际: %s", cfg.RuleTag)
+	}
+
 	// 校验 DNS_SERVER 格式
 	if _, _, err := net.SplitHostPort(cfg.DNSServer); err != nil {
 		return nil, fmt.Errorf("DNS_SERVER 格式错误（应为 host:port），实际: %s: %w", cfg.DNSServer, err)
@@ -90,10 +96,10 @@ func (c *Config) RuleDescription(hostname string) string {
 	return fmt.Sprintf("[%s:%s]", c.RuleTag, hostname)
 }
 
-// getEnv 读取环境变量，带默认值
+// getEnv 读取环境变量，带默认值（自动去除首尾空白）
 func getEnv(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+	if val := os.Getenv(key); strings.TrimSpace(val) != "" {
+		return strings.TrimSpace(val)
 	}
 	return defaultVal
 }
@@ -119,6 +125,11 @@ func parseDomainRules(raw string) ([]DomainRule, error) {
 			Protocol: strings.TrimSpace(parts[1]),
 			Ports:    strings.TrimSpace(parts[2]),
 			Action:   strings.TrimSpace(parts[3]),
+		}
+
+		// 校验 hostname
+		if rule.Host == "" {
+			return nil, fmt.Errorf("第 %d 条规则 hostname 不能为空", i+1)
 		}
 
 		// 校验 protocol

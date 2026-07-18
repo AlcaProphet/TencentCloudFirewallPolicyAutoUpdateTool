@@ -25,17 +25,19 @@ func NewSyncer(cfg *config.Config) (*Syncer, error) {
 		return nil, err
 	}
 
-	return &Syncer{
+	s := &Syncer{
 		cfg:      cfg,
 		client:   client,
 		resolver: dns.New(cfg.DNSServer),
 		stopCh:   make(chan struct{}),
-	}, nil
+	}
+	// 预增 WaitGroup 计数，避免 Run() goroutine 调度延迟导致 Shutdown 提前返回
+	s.wg.Add(1)
+	return s, nil
 }
 
 // Run 启动定时同步循环
 func (s *Syncer) Run() {
-	s.wg.Add(1)
 	defer s.wg.Done()
 
 	// 启动后立即执行一次
@@ -125,16 +127,16 @@ func (s *Syncer) applyWithRetry(hostname string, rule config.DomainRule, desc st
 			return nil
 		}
 
-		// 先删后加，减少冲突窗口
-		if err := s.client.DeleteRules(s.cfg.InstanceID, toDelete); err != nil {
-			lastErr = err
-			slog.Warn("删除规则失败，将重试", "attempt", i+1, "error", err)
-			continue
-		}
-
+		// 先加后删：新规则先生效，再清理旧规则，避免出现无规则保护窗口
 		if err := s.client.CreateRules(s.cfg.InstanceID, toAdd); err != nil {
 			lastErr = err
 			slog.Warn("添加规则失败，将重试", "attempt", i+1, "error", err)
+			continue
+		}
+
+		if err := s.client.DeleteRules(s.cfg.InstanceID, toDelete); err != nil {
+			lastErr = err
+			slog.Warn("删除规则失败，将重试", "attempt", i+1, "error", err)
 			continue
 		}
 
