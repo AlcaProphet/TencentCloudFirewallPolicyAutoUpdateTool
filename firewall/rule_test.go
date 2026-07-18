@@ -193,11 +193,11 @@ func TestTruncateDescription(t *testing.T) {
 		max    int
 		want   string
 	}{
-		{"不截断", "[auto-dns:api.example.com]", "TCP 443", 50, "[auto-dns:api.example.com] TCP 443"},
+		{"不截断", "[auto-dns:api.example.com]", "生产API", 50, "[auto-dns:api.example.com] 生产API"},
 		{"刚好等于50", "[auto-dns:abc]", "12345678901234567890123456789012345", 50,
 			"[auto-dns:abc] 12345678901234567890123456789012345"},
-		{"超长截断", "[auto-dns:api.example.com]", "TCP 443,80,8080,8443,9090 EXTRA", 50,
-			"[auto-dns:api.example.com] TCP 443,8...(truncated)"},
+		{"超长截断", "[auto-dns:api.example.com]", "very long comment for testing truncation", 50,
+			"[auto-dns:api.example.com] very long...(truncated)"},
 	}
 
 	for _, tt := range tests {
@@ -219,22 +219,18 @@ func TestTruncateDescription(t *testing.T) {
 
 func TestBuildDescription(t *testing.T) {
 	tests := []struct {
-		name     string
-		prefix   string
-		comment  string
-		protocol string
-		port     string
-		want     string
+		name    string
+		prefix  string
+		comment string
+		want    string
 	}{
-		{"无备注", "[auto-dns:api.example.com]", "", "TCP", "443",
-			"[auto-dns:api.example.com] TCP 443"},
-		{"有备注", "[auto-dns:api.example.com]", "生产API", "TCP", "443",
-			"[auto-dns:api.example.com] 生产API TCP 443"},
+		{"无备注", "[auto-dns:api.example.com]", "", "[auto-dns:api.example.com]"},
+		{"有备注", "[auto-dns:api.example.com]", "生产API", "[auto-dns:api.example.com] 生产API"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildDescription(tt.prefix, tt.comment, tt.protocol, tt.port)
+			got := buildDescription(tt.prefix, tt.comment)
 			if got != tt.want {
 				t.Errorf("buildDescription() = %q, want %q", got, tt.want)
 			}

@@ -22,9 +22,9 @@
 - **只用** `CreateFirewallRules`（增量添加）和 `DeleteFirewallRules`（精确删除）
 - 所有由本工具创建的规则，必须通过 `FirewallRuleDescription` 字段标记，格式：
   ```
-  [RULE_TAG:hostname] Protocol Port
+  [RULE_TAG:hostname] [comment]
   ```
-  其中 `RULE_TAG` 由 `.env` 中 `RULE_TAG` 变量指定（默认：`auto-dns`）
+  其中 `comment` 为 `DOMAIN_RULES` 中的可选备注。无备注时仅保留 `[RULE_TAG:hostname]`。
 
 ### 2. DNS 解析约束
 

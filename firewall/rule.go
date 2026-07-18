@@ -48,37 +48,33 @@ func toKey(r *lighthouse.FirewallRuleInfo) ruleKey {
 }
 
 // buildExpectedRules 根据 DNS 解析结果构建期望的规则列表
-// 描述格式: [RULE_TAG:hostname] [comment] Protocol Port，总长不超过 50 字节
+// 同一域名的所有规则共享同一条描述（仅用于标识归属，不影响规则匹配）
 func buildExpectedRules(resolved []dns.ResolvedIP, rule config.DomainRule, desc string) []*lighthouse.FirewallRule {
 	var rules []*lighthouse.FirewallRule
+	ruleDesc := buildDescription(desc, rule.Comment)
 
 	for _, ip := range resolved {
 		switch rule.Protocol {
 		case "TCP":
-			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action,
-				buildDescription(desc, rule.Comment, "TCP", rule.Ports)))
+			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action, ruleDesc))
 		case "UDP":
-			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action,
-				buildDescription(desc, rule.Comment, "UDP", rule.Ports)))
+			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action, ruleDesc))
 		case "TCP+UDP":
-			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action,
-				buildDescription(desc, rule.Comment, "TCP", rule.Ports)))
-			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action,
-				buildDescription(desc, rule.Comment, "UDP", rule.Ports)))
+			rules = append(rules, makeRule(ip, "TCP", rule.Ports, rule.Action, ruleDesc))
+			rules = append(rules, makeRule(ip, "UDP", rule.Ports, rule.Action, ruleDesc))
 		}
 	}
 
 	return rules
 }
 
-// buildDescription 构建规则描述: [prefix] [comment] Protocol Port
-// prefix（[RULE_TAG:hostname]）不会被截断，仅截断 comment + Protocol + Port 部分
-func buildDescription(prefix, comment, protocol, port string) string {
-	detail := protocol + " " + port
-	if comment != "" {
-		detail = comment + " " + detail
+// buildDescription 构建规则描述: [prefix] [comment]
+// 若无备注则仅保留 prefix；prefix 不会被截断
+func buildDescription(prefix, comment string) string {
+	if comment == "" {
+		return prefix
 	}
-	return truncateDescription(prefix, detail, 50)
+	return truncateDescription(prefix, comment, 50)
 }
 
 // truncateDescription 截断描述文本，prefix 不会被截断（ownedRules 依赖它做匹配）
