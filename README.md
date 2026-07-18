@@ -10,7 +10,7 @@
 
 - 🚀 **自动同步**：定时 DNS 解析 → 自动更新防火墙白名单
 - 📦 **Docker 一键部署**：`docker run -d --env-file .env ghcr.io/alcaprophet/fwalizer:latest`
-- 🔒 **安全隔离**：仅管理标记为 `[auto-dns:xxx]` 的规则，不影响其他防火墙规则
+- 🔒 **安全隔离**：仅管理标记为 `[auto-dns]` 的规则，不影响其他防火墙规则
 - 🌐 **IPv4 + IPv6**：同时支持 A 记录和 AAAA 记录
 - 🛡️ **乐观锁**：自动处理版本冲突，最多重试 3 次
 - ⏱️ **频率保护**：内置 500ms API 调用间隔，遵守腾讯云 10次/秒 限制
@@ -82,17 +82,19 @@ host|protocol|ports|action[|comment];host|protocol|ports|action[|comment];...
 | `protocol` | `TCP` / `UDP` / `TCP+UDP` | 协议类型 |
 | `ports` | `443,80` / `ALL` | 端口号（逗号分隔）或 `ALL` 全部 |
 | `action` | `ACCEPT` / `DROP` | 匹配动作 |
-| `comment` | 任意文本 | 可选备注，写入 `FirewallRuleDescription` |
+| `comment` | 任意文本 | 可选备注，直接拼接在 `[RULE_TAG]` 后 |
 
 > ⚠️ **注意**：
 > - 请确保每个域名仅指向单台服务器（少量 IP），本工具**不支持返回大量 IP 的 CDN 域名**。
 > - 防火墙规则描述（`FirewallRuleDescription`）受腾讯云 API 限制 ≤ 64 字节，请勿使用超长域名或备注。
 > - 多个域名之间已内置 500ms API 频率保护间隔，遵守腾讯云 10次/秒 速率限制。
 
+生成的防火墙规则描述格式：`[RULE_TAG]备注内容`，如 `[auto-dns]生产API`。无备注时仅保留 `[auto-dns]`。
+
 示例：
 ```env
-# 放行 api.example.com 的 TCP 443 和 80（备注：生产API）
-# 放行 cdn.example.com 的 TCP+UDP 443
+# 放行 api.example.com 的 TCP 443 和 80 → 描述: [auto-dns]生产API
+# 放行 cdn.example.com 的 TCP+UDP 443 → 描述: [auto-dns]
 DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT|生产API;cdn.example.com|TCP+UDP|443|ACCEPT
 ```
 
@@ -100,11 +102,23 @@ DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT|生产API;cdn.example.com|TCP+UDP
 
 ## 🏗️ 本地开发
 
-> **Windows 用户注意**：Makefile 中的命令（`rm`、`docker` 等）需要 **WSL2** 或 **Git Bash** 环境运行。也可直接用 Go 命令替代：
-> ```powershell
-> go build -ldflags="-s -w" -o fwalizer.exe .
-> docker build -t fwalizer .
-> ```
+### 无需 Docker 直接运行
+
+```powershell
+# 1. 创建并编辑 .env
+copy .env.example .env
+
+# 2. 加载环境变量（注意 -Encoding UTF8 避免中文乱码）
+Get-Content -Encoding UTF8 .env | Where-Object { $_ -match '^\s*[^#]' -and $_ -match '=' } | ForEach-Object {
+    $name, $value = $_ -split '=', 2
+    Set-Item -Path "env:$($name.Trim())" -Value $value.Trim()
+}
+
+# 3. 运行
+go run .
+```
+
+### Make 命令（需要 Git Bash 或 WSL2）
 
 ```bash
 # 编译
@@ -122,8 +136,16 @@ make docker-run
 # 查看日志
 make docker-logs
 
-# 测试
+# 运行测试
 make test
+```
+
+### Go 命令
+
+```bash
+go build -ldflags="-s -w" -o fwalizer .   # 编译
+go test -v ./...                            # 测试
+go vet ./...                                # 代码检查
 ```
 
 ---
