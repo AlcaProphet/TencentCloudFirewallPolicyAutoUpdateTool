@@ -4,11 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	lighthouse "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse/v20200324"
 
-	"fwalizer/config"
-	"fwalizer/dns"
+	"github.com/alcaprophet/fwalizer/config"
+	"github.com/alcaprophet/fwalizer/dns"
 )
 
 func TestOwnedRules(t *testing.T) {
@@ -237,6 +236,3 @@ func TestBuildDescription(t *testing.T) {
 		})
 	}
 }
-
-// 确保 common 包被使用（避免 import 未使用错误）
-var _ = common.StringPtr

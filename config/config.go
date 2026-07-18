@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// MaxFirewallRuleDescriptionBytes 腾讯云 API 对 FirewallRuleDescription 的字节数上限
+const MaxFirewallRuleDescriptionBytes = 64
+
 // DomainRule 单条域名规则
 type DomainRule struct {
 	Host     string // 域名，如 api.example.com
@@ -34,10 +37,10 @@ type Config struct {
 // Load 从环境变量加载并校验配置
 func Load() (*Config, error) {
 	cfg := &Config{
-		SecretID:   os.Getenv("TENCENTCLOUD_SECRET_ID"),
-		SecretKey:  os.Getenv("TENCENTCLOUD_SECRET_KEY"),
-		InstanceID: os.Getenv("LIGHTHOUSE_INSTANCE_ID"),
-		Region:     os.Getenv("LIGHTHOUSE_REGION"),
+		SecretID:   strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_ID")),
+		SecretKey:  strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_KEY")),
+		InstanceID: strings.TrimSpace(os.Getenv("LIGHTHOUSE_INSTANCE_ID")),
+		Region:     strings.TrimSpace(os.Getenv("LIGHTHOUSE_REGION")),
 		RuleTag:    getEnv("RULE_TAG", "auto-dns"),
 		DNSServer:  getEnv("DNS_SERVER", "8.8.8.8:53"),
 	}
@@ -67,7 +70,7 @@ func Load() (*Config, error) {
 	}
 
 	// 解析 DOMAIN_RULES
-	rulesRaw := os.Getenv("DOMAIN_RULES")
+	rulesRaw := strings.TrimSpace(os.Getenv("DOMAIN_RULES"))
 	if rulesRaw == "" {
 		return nil, fmt.Errorf("DOMAIN_RULES 为必填项")
 	}

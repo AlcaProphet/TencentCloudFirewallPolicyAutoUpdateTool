@@ -1,4 +1,4 @@
-module fwalizer
+module github.com/alcaprophet/fwalizer
 
 go 1.25
 

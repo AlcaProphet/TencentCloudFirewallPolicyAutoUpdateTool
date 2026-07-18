@@ -7,7 +7,7 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	lighthouse "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse/v20200324"
 
-	"fwalizer/config"
+	"github.com/alcaprophet/fwalizer/config"
 )
 
 // Client 腾讯云 Lighthouse 防火墙客户端封装
@@ -49,8 +49,8 @@ func (c *Client) GetRules(instanceID string) ([]*lighthouse.FirewallRuleInfo, ui
 			return nil, 0, fmt.Errorf("查询防火墙规则失败: %w", err)
 		}
 
-		// 记录 FirewallVersion（每页一致，取最后一次即可）
-		if resp.Response.FirewallVersion != nil {
+		// 记录 FirewallVersion（仅首次非 nil 时记录，避免后续页 nil 覆盖有效值）
+		if resp.Response.FirewallVersion != nil && version == 0 {
 			version = *resp.Response.FirewallVersion
 		}
 

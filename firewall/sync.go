@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"fwalizer/config"
-	"fwalizer/dns"
+	"github.com/alcaprophet/fwalizer/config"
+	"github.com/alcaprophet/fwalizer/dns"
 )
 
 // Syncer 定时同步器
@@ -68,8 +68,12 @@ func (s *Syncer) syncAll() {
 	slog.Info("开始同步轮次")
 
 	// 逐个域名处理（每个域名内部独立 Describe + Diff + 重试）
+	// 域名之间加入间隔以遵守腾讯云 API 频率限制（10次/秒）
 	for _, rule := range s.cfg.DomainRules {
 		s.syncDomain(rule)
+		// 频率保护：每域名最多约 3 次 API 调用（Describe + Create + Delete），
+		// 500ms 间隔确保每秒不超过约 6 次调用，留有安全余量。
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	slog.Info("同步轮次完成")
@@ -127,7 +131,9 @@ func (s *Syncer) applyWithRetry(hostname string, rule config.DomainRule, desc st
 			return nil
 		}
 
-		// 先加后删：新规则先生效，再清理旧规则，避免出现无规则保护窗口
+		// 先加后删：新规则先生效，再清理旧规则，避免出现无规则保护窗口。
+		// 若 Create 成功但 Delete 失败，重试时 Describe 会反映最新状态（新规则已存在），
+		// diff 结果为仅有 Delete 待执行，自动收敛到一致状态。
 		if err := s.client.CreateRules(s.cfg.InstanceID, toAdd); err != nil {
 			lastErr = err
 			slog.Warn("添加规则失败，将重试", "attempt", i+1, "error", err)

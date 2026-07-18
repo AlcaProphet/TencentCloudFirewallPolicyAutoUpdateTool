@@ -7,8 +7,8 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	lighthouse "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse/v20200324"
 
-	"fwalizer/config"
-	"fwalizer/dns"
+	"github.com/alcaprophet/fwalizer/config"
+	"github.com/alcaprophet/fwalizer/dns"
 )
 
 // ruleKey 规则唯一标识 = protocol + port + cidrBlock + ipv6CidrBlock + action
@@ -74,11 +74,14 @@ func buildDescription(prefix, comment string) string {
 	if comment == "" {
 		return prefix
 	}
-	return truncateDescription(prefix, comment, 50)
+	return truncateDescription(prefix, comment, config.MaxFirewallRuleDescriptionBytes)
 }
 
 // truncateDescription 截断描述文本，prefix 不会被截断（ownedRules 依赖它做匹配）
 // 仅截断 detail 部分，超出 maxBytes 时追加 "...(truncated)"
+//
+// 注意：若 prefix 本身已接近或超过 maxBytes，截断后的总长度可能超出 maxBytes，
+// 但仍在腾讯云 API 硬限制（64 字节）之内。用户应避免使用过长的 RULE_TAG 或域名。
 func truncateDescription(prefix, detail string, maxBytes int) string {
 	full := prefix + " " + detail
 	if len(full) <= maxBytes {
@@ -172,6 +175,8 @@ func Diff(
 		}
 	}
 
+	// Diff 是每次同步的核心比对环节，在此处记录差异摘要便于 docker logs 快速定位问题。
+	// 日志位于函数内而非调用方，是为了确保无论从哪个路径（首次同步 / 重试）调用都能输出。
 	slog.Info("规则 diff 完成",
 		"hostname", rule.Host,
 		"expected", len(expected),

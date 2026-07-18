@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"fwalizer/config"
-	"fwalizer/firewall"
+	"github.com/alcaprophet/fwalizer/config"
+	"github.com/alcaprophet/fwalizer/firewall"
 )
 
 func main() {

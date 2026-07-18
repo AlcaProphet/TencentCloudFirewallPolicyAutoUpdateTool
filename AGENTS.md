@@ -34,6 +34,7 @@
 - IPv4 写入 `CidrBlock` 字段（格式：`1.2.3.4/32`）
 - IPv6 写入 `Ipv6CidrBlock` 字段（格式：`2001:db8::1/128`）
 - 域名解析失败时：记录 WARN 日志，保留现有规则不变（不删除）
+- ⚠️ 每个域名应仅解析到少量 IP（单台服务器场景），不支持 CDN 等返回大量 IP 的域名
 
 ### 3. 定时调度约束
 
@@ -48,7 +49,13 @@
 - 写入失败时自动重试（最多 3 次，指数退避）
 - 重试步骤：重新 Describe → 重新 diff → 重新 Create/Delete
 
-### 5. Docker 约束
+### 5. API 频率限制约束
+
+- Lighthouse 防火墙 API 限制为 **10次/秒**
+- 每个域名的同步操作（Describe + Create + Delete）约 3 次 API 调用
+- 域名之间加入 **500ms** 间隔，确保每秒约 6 次调用，留有安全余量
+
+### 6. Docker 约束
 
 - 基础镜像：`alpine:3.20`
 - 编译镜像：`golang:1.25-alpine`
@@ -57,17 +64,17 @@
 - 仅暴露 stdout 日志（`docker logs` 查看）
 - 支持 `HEALTHCHECK`
 
-### 6. 配置约束
+### 7. 配置约束
 
 - 所有配置通过 `.env` 环境变量传入
 - `.env` 文件绝不提交 Git
 - 提供 `.env.example` 模板
 - 密钥必须使用腾讯云 **CAM 子账号 + 最小权限**
 
-### 7. GitHub Actions 约束
+### 8. GitHub Actions 约束
 
 - 推送 tag（如 `v1.0.0`）时自动构建并推送 Docker 镜像到 **ghcr.io**
-- 镜像命名：`ghcr.io/<owner>/fwalizer:<tag>`
+- 镜像命名：`ghcr.io/alcaprophet/fwalizer:<tag>`
 - 构建平台：`linux/amd64`
 - PR 时仅编译检查，不推送镜像
 
@@ -94,7 +101,7 @@ host|protocol|ports|action[|comment];host|protocol|ports|action[|comment];...
 - `protocol`: `TCP` / `UDP` / `TCP+UDP`
 - `ports`: 逗号分隔端口号（如 `443,80`）或 `ALL`（所有端口，遵循腾讯云 API 规范）
 - `action`: `ACCEPT` / `DROP`
-- `comment`: 可选备注，写入 `FirewallRuleDescription`，用于人类识别（总长 ≤ 50 字节，超出自动截断）
+- `comment`: 可选备注，写入 `FirewallRuleDescription`，用于人类识别（腾讯云 API 限制 ≤ 64 字节，超出自动截断；请勿使用超长 RULE_TAG 或域名，避免截断异常）
 
 示例：
 ```
@@ -130,7 +137,7 @@ TencentCloudFirewallTool/
 
 ## 开发约定
 
-- **模块路径**：`github.com/<owner>/fwalizer`（开源仓库地址）
+- **模块路径**：`github.com/alcaprophet/fwalizer`（GitHub 仓库地址）
 - **Go 版本**：`go 1.25`
 - **SDK 依赖**：`github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse`
 - **无外部框架依赖**：不使用 gin/echo 等 HTTP 框架，不使用 cron 库，尽量用标准库

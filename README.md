@@ -16,6 +16,7 @@
 - 🔒 **安全隔离**：仅管理标记为 `[auto-dns:xxx]` 的规则，不影响其他防火墙规则
 - 🌐 **IPv4 + IPv6**：同时支持 A 记录和 AAAA 记录
 - 🛡️ **乐观锁**：自动处理版本冲突，最多重试 3 次
+- ⏱️ **频率保护**：内置 500ms API 调用间隔，遵守腾讯云 10次/秒 限制
 - 📋 **灵活配置**：支持 TCP/UDP、多端口、ACCEPT/DROP 动作
 - 🏥 **健康检查**：内置 Docker HEALTHCHECK
 
@@ -85,6 +86,11 @@ host|protocol|ports|action[|comment];host|protocol|ports|action[|comment];...
 | `ports` | `443,80` / `ALL` | 端口号（逗号分隔）或 `ALL` 全部 |
 | `action` | `ACCEPT` / `DROP` | 匹配动作 |
 | `comment` | 任意文本 | 可选备注，写入 `FirewallRuleDescription` |
+
+> ⚠️ **注意**：
+> - 请确保每个域名仅指向单台服务器（少量 IP），本工具**不支持返回大量 IP 的 CDN 域名**。
+> - 防火墙规则描述（`FirewallRuleDescription`）受腾讯云 API 限制 ≤ 64 字节，请勿使用超长域名或备注。
+> - 多个域名之间已内置 500ms API 频率保护间隔，遵守腾讯云 10次/秒 速率限制。
 
 示例：
 ```env
