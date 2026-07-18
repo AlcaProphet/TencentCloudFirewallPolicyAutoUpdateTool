@@ -1,11 +1,8 @@
 # 🔐 FWAlizer — Firewall DNS Synchronizer
 
-[![Docker Build & Publish](https://github.com/alcaprophet/fwalizer/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/alcaprophet/fwalizer/actions/workflows/docker-publish.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 **FWAlizer** 是一个轻量级自动化工具，运行在 Docker 容器中，通过 DNS 解析指定域名的 IP 地址，并自动将解析结果同步到**腾讯云 Lighthouse 防火墙**白名单中。
 
-> 适用于：域名 IP 频繁变动的场景（如 CDN、动态 DNS、API 网关），避免手动更新防火墙规则。
+> 适用于：域名 IP 频繁变动的场景（如动态 DNS、API 网关），避免手动更新防火墙规则。
 
 ---
 
