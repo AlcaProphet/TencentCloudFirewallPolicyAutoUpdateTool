@@ -1,0 +1,48 @@
+package integration
+
+import (
+	"os"
+	"testing"
+
+	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	tcerr "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
+)
+
+func TestRoleArnProvider(t *testing.T) {
+	sKey := os.Getenv("TENCENTCLOUD_SECRET_ID")
+	sId := os.Getenv("TENCENTCLOUD_SECRET_KEY")
+	roleArn := "qcs::cam::uin/123456:roleName/test"
+
+	pc := common.DefaultRoleArnProvider(sKey, sId, roleArn)
+	_, e := pc.GetCredential()
+	if e == nil {
+		t.Fatalf("unexpected success")
+	}
+	if te, ok := e.(*tcerr.TencentCloudSDKError); ok {
+		if te.GetCode() == "InternalError.GetRoleError" {
+			return
+		}
+	}
+	t.Fatalf("unexpected error: %s", e)
+}
+
+func TestRoleArnProviderEndpoint(t *testing.T) {
+	hook := installHttpHook()
+	t.Cleanup(hook.Uninstall)
+
+	sKey := "skey"
+	sId := "sid"
+	roleArn := "qcs::cam::uin/123456:roleName/test"
+	ep := "sts.ap-guangzhou.tencentcloudapi.com"
+
+	pc := common.DefaultRoleArnProvider(sKey, sId, roleArn)
+	pc.Endpoint = ep
+	_, e := pc.GetCredential()
+	if hook.Reqs[0].Host != ep {
+		t.Fatalf("unexpected request host: %s", hook.Reqs[0].Host)
+	}
+
+	if e == nil {
+		t.Fatal("unexpected success")
+	}
+}

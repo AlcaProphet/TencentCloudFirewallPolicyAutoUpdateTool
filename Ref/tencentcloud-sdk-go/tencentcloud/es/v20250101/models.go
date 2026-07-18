@@ -1,0 +1,1082 @@
+// Copyright (c) 2017-2025 Tencent. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package v20250101
+
+import (
+    tcerr "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
+    tchttp "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/http"
+    "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/json"
+)
+
+// Predefined struct for user
+type ChatCompletionsRequestParams struct {
+	// 会话内容，按对话时间从旧到新在数组中排列，长度受模型窗口大小限制。
+	Messages []*Message `json:"Messages,omitnil,omitempty" name:"Messages"`
+
+	// 模型名称，可选模型列表：hunyuan-turbo，hunyuan-large，hunyuan-large-longcontext，hunyuan-standard，hunyuan-standard-256K，deepseek-r1，deepseek-v3，deepseek-r1-distill-qwen-32b。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 是否以流式接口的形式返回数据，默认true。
+	Stream *bool `json:"Stream,omitnil,omitempty" name:"Stream"`
+
+	// 取值区间为[0.0, 1.0], 非必要不建议使用, 不合理的取值会影响效果 。
+	TopP *float64 `json:"TopP,omitnil,omitempty" name:"TopP"`
+
+	// 取值区间为[0.0, 2.0], 非必要不建议使用, 不合理的取值会影响效果 。
+	Temperature *float64 `json:"Temperature,omitnil,omitempty" name:"Temperature"`
+
+	// 是否开启联网搜索。默认为 false。
+	OnlineSearch *bool `json:"OnlineSearch,omitnil,omitempty" name:"OnlineSearch"`
+
+	// 当 OnlineSearch 为 true 时，指定的搜索引擎，默认为 bing。
+	OnlineSearchOptions *OnlineSearchOptions `json:"OnlineSearchOptions,omitnil,omitempty" name:"OnlineSearchOptions"`
+
+	// 可调用的工具列表，当前支持模型：hunyuan-turbo, deepseek-v3。
+	Tools []*Tool `json:"Tools,omitnil,omitempty" name:"Tools"`
+
+	// 工具使用选项，可选值包括 none、auto、custom。说明：1. 仅对 hunyuan-turbo、deepseek-v3 模型生效。2. none：不调用工具；auto：模型自行选择生成回复或调用工具；custom：强制模型调用指定的工具。3. 未设置时，默认值为auto
+	ToolChoice *string `json:"ToolChoice,omitnil,omitempty" name:"ToolChoice"`
+
+	// 强制模型调用指定的工具，当参数ToolChoice为custom时，此参数为必填
+	CustomTool *Tool `json:"CustomTool,omitnil,omitempty" name:"CustomTool"`
+}
+
+type ChatCompletionsRequest struct {
+	*tchttp.BaseRequest
+	
+	// 会话内容，按对话时间从旧到新在数组中排列，长度受模型窗口大小限制。
+	Messages []*Message `json:"Messages,omitnil,omitempty" name:"Messages"`
+
+	// 模型名称，可选模型列表：hunyuan-turbo，hunyuan-large，hunyuan-large-longcontext，hunyuan-standard，hunyuan-standard-256K，deepseek-r1，deepseek-v3，deepseek-r1-distill-qwen-32b。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 是否以流式接口的形式返回数据，默认true。
+	Stream *bool `json:"Stream,omitnil,omitempty" name:"Stream"`
+
+	// 取值区间为[0.0, 1.0], 非必要不建议使用, 不合理的取值会影响效果 。
+	TopP *float64 `json:"TopP,omitnil,omitempty" name:"TopP"`
+
+	// 取值区间为[0.0, 2.0], 非必要不建议使用, 不合理的取值会影响效果 。
+	Temperature *float64 `json:"Temperature,omitnil,omitempty" name:"Temperature"`
+
+	// 是否开启联网搜索。默认为 false。
+	OnlineSearch *bool `json:"OnlineSearch,omitnil,omitempty" name:"OnlineSearch"`
+
+	// 当 OnlineSearch 为 true 时，指定的搜索引擎，默认为 bing。
+	OnlineSearchOptions *OnlineSearchOptions `json:"OnlineSearchOptions,omitnil,omitempty" name:"OnlineSearchOptions"`
+
+	// 可调用的工具列表，当前支持模型：hunyuan-turbo, deepseek-v3。
+	Tools []*Tool `json:"Tools,omitnil,omitempty" name:"Tools"`
+
+	// 工具使用选项，可选值包括 none、auto、custom。说明：1. 仅对 hunyuan-turbo、deepseek-v3 模型生效。2. none：不调用工具；auto：模型自行选择生成回复或调用工具；custom：强制模型调用指定的工具。3. 未设置时，默认值为auto
+	ToolChoice *string `json:"ToolChoice,omitnil,omitempty" name:"ToolChoice"`
+
+	// 强制模型调用指定的工具，当参数ToolChoice为custom时，此参数为必填
+	CustomTool *Tool `json:"CustomTool,omitnil,omitempty" name:"CustomTool"`
+}
+
+func (r *ChatCompletionsRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ChatCompletionsRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "Messages")
+	delete(f, "ModelName")
+	delete(f, "Stream")
+	delete(f, "TopP")
+	delete(f, "Temperature")
+	delete(f, "OnlineSearch")
+	delete(f, "OnlineSearchOptions")
+	delete(f, "Tools")
+	delete(f, "ToolChoice")
+	delete(f, "CustomTool")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "ChatCompletionsRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ChatCompletionsResponseParams struct {
+	// 此次请求的id
+	Id *string `json:"Id,omitnil,omitempty" name:"Id"`
+
+	// 回复内容
+	Choices []*Choice `json:"Choices,omitnil,omitempty" name:"Choices"`
+
+	// token使用量
+	Usage *TokenUsage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 联网搜索结果。
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	OnlineSearchContent []*WebContent `json:"OnlineSearchContent,omitnil,omitempty" name:"OnlineSearchContent"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。本接口为流式响应接口，当请求成功时，RequestId 会被放在 HTTP 响应的 Header "X-TC-RequestId" 中。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type ChatCompletionsResponse struct {
+	tchttp.BaseSSEResponse `json:"-"`
+	Response *ChatCompletionsResponseParams `json:"Response"`
+}
+
+func (r *ChatCompletionsResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ChatCompletionsResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+type Choice struct {
+	// 返回的回复。
+	Message *OutputMessage `json:"Message,omitnil,omitempty" name:"Message"`
+}
+
+type Chunk struct {
+	// chunk索引。切片顺序 id。
+	Index *uint64 `json:"Index,omitnil,omitempty" name:"Index"`
+
+	// chunk内容。
+	Content *string `json:"Content,omitnil,omitempty" name:"Content"`
+}
+
+type ChunkConfig struct {
+	// 按照分隔符切片后，对分片长度会进行校验，当超过最大分片长度时，则用下一级分隔符分割，如无下一级分隔符，则保留原长度；默认值：1000
+	MaxChunkSize *uint64 `json:"MaxChunkSize,omitnil,omitempty" name:"MaxChunkSize"`
+
+	// 分隔符列表，优先靠前的分隔符；文件类型为TXT时，默认值：["\n\n", "\n", "。", "！", "？", "，", ""]
+	Delimiters []*string `json:"Delimiters,omitnil,omitempty" name:"Delimiters"`
+
+	// 相邻切片重合字符数，需要小于分片长度，若形成完全冗余的切片，则会自动过滤；默认值：0.2*MaxChunkSize
+	ChunkOverlap *uint64 `json:"ChunkOverlap,omitnil,omitempty" name:"ChunkOverlap"`
+}
+
+type ChunkConfigAsync struct {
+	// 最大分片长度
+	MaxChunkSize *int64 `json:"MaxChunkSize,omitnil,omitempty" name:"MaxChunkSize"`
+}
+
+type ChunkDocument struct {
+	// 文件类型，支持 MD，TXT 格式。
+	FileType *string `json:"FileType,omitnil,omitempty" name:"FileType"`
+
+	// 文本原文，使用字符串格式输入。
+	FileContent *string `json:"FileContent,omitnil,omitempty" name:"FileContent"`
+}
+
+// Predefined struct for user
+type ChunkDocumentAsyncRequestParams struct {
+	// 文件信息。
+	Document *Document `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，可选模型列表：doc-tree-chunk。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 文件切片配置。
+	Config *ChunkConfigAsync `json:"Config,omitnil,omitempty" name:"Config"`
+}
+
+type ChunkDocumentAsyncRequest struct {
+	*tchttp.BaseRequest
+	
+	// 文件信息。
+	Document *Document `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，可选模型列表：doc-tree-chunk。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 文件切片配置。
+	Config *ChunkConfigAsync `json:"Config,omitnil,omitempty" name:"Config"`
+}
+
+func (r *ChunkDocumentAsyncRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ChunkDocumentAsyncRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "Document")
+	delete(f, "ModelName")
+	delete(f, "Config")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "ChunkDocumentAsyncRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ChunkDocumentAsyncResponseParams struct {
+	// 任务 ID
+	TaskId *string `json:"TaskId,omitnil,omitempty" name:"TaskId"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type ChunkDocumentAsyncResponse struct {
+	*tchttp.BaseResponse
+	Response *ChunkDocumentAsyncResponseParams `json:"Response"`
+}
+
+func (r *ChunkDocumentAsyncResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ChunkDocumentAsyncResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ChunkDocumentRequestParams struct {
+	// 切片文件信息。
+	Document *ChunkDocument `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，可选模型列表：doc-chunk。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 文件切片配置。
+	Config *ChunkConfig `json:"Config,omitnil,omitempty" name:"Config"`
+}
+
+type ChunkDocumentRequest struct {
+	*tchttp.BaseRequest
+	
+	// 切片文件信息。
+	Document *ChunkDocument `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，可选模型列表：doc-chunk。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 文件切片配置。
+	Config *ChunkConfig `json:"Config,omitnil,omitempty" name:"Config"`
+}
+
+func (r *ChunkDocumentRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ChunkDocumentRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "Document")
+	delete(f, "ModelName")
+	delete(f, "Config")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "ChunkDocumentRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ChunkDocumentResponseParams struct {
+	// 无
+	Chunks []*Chunk `json:"Chunks,omitnil,omitempty" name:"Chunks"`
+
+	// token消耗量
+	Usage *Usage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type ChunkDocumentResponse struct {
+	*tchttp.BaseResponse
+	Response *ChunkDocumentResponseParams `json:"Response"`
+}
+
+func (r *ChunkDocumentResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ChunkDocumentResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+type Document struct {
+	// 支持的文件类型：PDF、DOC、DOCX、PPT、PPTX、MD、TXT、XLS、
+	// XLSX、CSV、PNG、JPG、JPEG、BMP、GIF、WEBP、HEIC、EPS、ICNS、
+	// IM、PCX、PPM、TIFF、XBM、HEIF、JP2
+	// 
+	// 文档解析支持的文件大小：
+	// -PDF、DOC、DOCX、PPT、PPTX支持100M
+	// -MD、TXT、XLS、XLSX、CSV支特10M
+	// -其他支持20M
+	// 
+	// 文本切片支持的文件大小：
+	// -PDF最大300M
+	// -D0CX、D0C、PPT、PPTX最大200M
+	// -TXT、MD最大10M
+	// -其他最大20M
+	FileType *string `json:"FileType,omitnil,omitempty" name:"FileType"`
+
+	// 文件存储于腾讯云的 URL 可保障更高的下载速度和稳定性，使用腾讯云COS 文件地址。
+	FileUrl *string `json:"FileUrl,omitnil,omitempty" name:"FileUrl"`
+
+	// 文件的 base64 值，携带 MineType前缀信息。编码后的后的文件不超过 10M。
+	// 支持的文件大小：所下载文件经Base64编码后不超过 8M。文件下载时间不超过3秒。
+	// 支持的图片像素：单边介于20-10000px之间。
+	FileContent *string `json:"FileContent,omitnil,omitempty" name:"FileContent"`
+
+	// 文件名称，当使用 base64上传的时候使用。
+	FileName *string `json:"FileName,omitnil,omitempty" name:"FileName"`
+
+	// 文档的起始页码
+	FileStartPageNumber *int64 `json:"FileStartPageNumber,omitnil,omitempty" name:"FileStartPageNumber"`
+
+	// 文档的结束页码
+	FileEndPageNumber *int64 `json:"FileEndPageNumber,omitnil,omitempty" name:"FileEndPageNumber"`
+}
+
+type DocumentChunkUsage struct {
+	//  解析页面数量
+	PageNumber *int64 `json:"PageNumber,omitnil,omitempty" name:"PageNumber"`
+
+	// 消耗 token数量
+	TotalTokens *int64 `json:"TotalTokens,omitnil,omitempty" name:"TotalTokens"`
+}
+
+type DocumentParseConfig struct {
+	// 0:图片以链接形式返回
+	// 1:返回图片中提取的文本内容
+	ImageResponseType *uint64 `json:"ImageResponseType,omitnil,omitempty" name:"ImageResponseType"`
+}
+
+type EmbeddingData struct {
+	// embedding 内容
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	Embedding []*float64 `json:"Embedding,omitnil,omitempty" name:"Embedding"`
+
+	// 索引序号
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	Index *int64 `json:"Index,omitnil,omitempty" name:"Index"`
+}
+
+// Predefined struct for user
+type GetDocumentChunkResultRequestParams struct {
+	//  任务 ID
+	TaskId *string `json:"TaskId,omitnil,omitempty" name:"TaskId"`
+}
+
+type GetDocumentChunkResultRequest struct {
+	*tchttp.BaseRequest
+	
+	//  任务 ID
+	TaskId *string `json:"TaskId,omitnil,omitempty" name:"TaskId"`
+}
+
+func (r *GetDocumentChunkResultRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetDocumentChunkResultRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "TaskId")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "GetDocumentChunkResultRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetDocumentChunkResultResponseParams struct {
+	// 任务状态，-1：失败，0：运行中，1：成功。
+	Status *int64 `json:"Status,omitnil,omitempty" name:"Status"`
+
+	// 切片结果文件。
+	DocumentChunkResultUrl *string `json:"DocumentChunkResultUrl,omitnil,omitempty" name:"DocumentChunkResultUrl"`
+
+	// Token用量。
+	Usage *DocumentChunkUsage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type GetDocumentChunkResultResponse struct {
+	*tchttp.BaseResponse
+	Response *GetDocumentChunkResultResponseParams `json:"Response"`
+}
+
+func (r *GetDocumentChunkResultResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetDocumentChunkResultResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetDocumentParseResultRequestParams struct {
+	// 任务 Id
+	TaskId *string `json:"TaskId,omitnil,omitempty" name:"TaskId"`
+}
+
+type GetDocumentParseResultRequest struct {
+	*tchttp.BaseRequest
+	
+	// 任务 Id
+	TaskId *string `json:"TaskId,omitnil,omitempty" name:"TaskId"`
+}
+
+func (r *GetDocumentParseResultRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetDocumentParseResultRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "TaskId")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "GetDocumentParseResultRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetDocumentParseResultResponseParams struct {
+	// 任务状态，-1：失败，0：运行中，1：成功。
+	Status *int64 `json:"Status,omitnil,omitempty" name:"Status"`
+
+	// 结果文件。
+	DocumentParseResultUrl *string `json:"DocumentParseResultUrl,omitnil,omitempty" name:"DocumentParseResultUrl"`
+
+	// 失败的页码。
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	FailedPages []*int64 `json:"FailedPages,omitnil,omitempty" name:"FailedPages"`
+
+	// 消耗页数
+	Usage *PageUsage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type GetDocumentParseResultResponse struct {
+	*tchttp.BaseResponse
+	Response *GetDocumentParseResultResponseParams `json:"Response"`
+}
+
+func (r *GetDocumentParseResultResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetDocumentParseResultResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetMultiModalEmbeddingRequestParams struct {
+	// 模型名称，支持WeCLIPv2-Base和WeCLIPv2-Large
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 需进行向量化的文本集，一次输入限10条，单条文本长度限72
+	Texts []*string `json:"Texts,omitnil,omitempty" name:"Texts"`
+
+	// 输入图片，base64编码格式，一次输入限制8个，单张图片限制1M
+	ImageData []*string `json:"ImageData,omitnil,omitempty" name:"ImageData"`
+
+	// 输入图片url，一次输入限8个，推荐cos地址，速度更快
+	ImageUrl []*string `json:"ImageUrl,omitnil,omitempty" name:"ImageUrl"`
+}
+
+type GetMultiModalEmbeddingRequest struct {
+	*tchttp.BaseRequest
+	
+	// 模型名称，支持WeCLIPv2-Base和WeCLIPv2-Large
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 需进行向量化的文本集，一次输入限10条，单条文本长度限72
+	Texts []*string `json:"Texts,omitnil,omitempty" name:"Texts"`
+
+	// 输入图片，base64编码格式，一次输入限制8个，单张图片限制1M
+	ImageData []*string `json:"ImageData,omitnil,omitempty" name:"ImageData"`
+
+	// 输入图片url，一次输入限8个，推荐cos地址，速度更快
+	ImageUrl []*string `json:"ImageUrl,omitnil,omitempty" name:"ImageUrl"`
+}
+
+func (r *GetMultiModalEmbeddingRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetMultiModalEmbeddingRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "ModelName")
+	delete(f, "Texts")
+	delete(f, "ImageData")
+	delete(f, "ImageUrl")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "GetMultiModalEmbeddingRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetMultiModalEmbeddingResponseParams struct {
+	// 多模态特征向量输出
+	Data *MultiModalEmbeddingData `json:"Data,omitnil,omitempty" name:"Data"`
+
+	// 消耗的tokens和输入图片数量
+	Usage *MultiModalUsage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type GetMultiModalEmbeddingResponse struct {
+	*tchttp.BaseResponse
+	Response *GetMultiModalEmbeddingResponseParams `json:"Response"`
+}
+
+func (r *GetMultiModalEmbeddingResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetMultiModalEmbeddingResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetTextEmbeddingRequestParams struct {
+	// 模型名称，可选模型列表：bge-base-zh-v1.5,bge-large-zh-v1.5,Conan-embedding-v1,bge-m3,KaLM-embedding-multilingual-mini-v1,Qwen3-Embedding-0.6B。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 需进行向量化的文本集。
+	Texts []*string `json:"Texts,omitnil,omitempty" name:"Texts"`
+}
+
+type GetTextEmbeddingRequest struct {
+	*tchttp.BaseRequest
+	
+	// 模型名称，可选模型列表：bge-base-zh-v1.5,bge-large-zh-v1.5,Conan-embedding-v1,bge-m3,KaLM-embedding-multilingual-mini-v1,Qwen3-Embedding-0.6B。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 需进行向量化的文本集。
+	Texts []*string `json:"Texts,omitnil,omitempty" name:"Texts"`
+}
+
+func (r *GetTextEmbeddingRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetTextEmbeddingRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "ModelName")
+	delete(f, "Texts")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "GetTextEmbeddingRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type GetTextEmbeddingResponseParams struct {
+	// 结果集
+	Data []*EmbeddingData `json:"Data,omitnil,omitempty" name:"Data"`
+
+	// 向量化消耗的token数量。
+	Usage *Usage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type GetTextEmbeddingResponse struct {
+	*tchttp.BaseResponse
+	Response *GetTextEmbeddingResponseParams `json:"Response"`
+}
+
+func (r *GetTextEmbeddingResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *GetTextEmbeddingResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+type Message struct {
+	// 角色，可选值包括 system、user、assistant、 tool。
+	Role *string `json:"Role,omitnil,omitempty" name:"Role"`
+
+	// 具体文本内容
+	Content *string `json:"Content,omitnil,omitempty" name:"Content"`
+
+	// 当role为tool时传入，标识具体的函数调用
+	ToolCallId *string `json:"ToolCallId,omitnil,omitempty" name:"ToolCallId"`
+
+	// 模型生成的工具调用
+	ToolCalls []*ToolCall `json:"ToolCalls,omitnil,omitempty" name:"ToolCalls"`
+}
+
+type MultiModalEmbeddingData struct {
+	// 文本特征向量
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	TextEmbeddings []*EmbeddingData `json:"TextEmbeddings,omitnil,omitempty" name:"TextEmbeddings"`
+
+	// 图片特征向量
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	ImageEmbeddings []*EmbeddingData `json:"ImageEmbeddings,omitnil,omitempty" name:"ImageEmbeddings"`
+}
+
+type MultiModalUsage struct {
+	// 消耗tokens
+	TotalTokens *uint64 `json:"TotalTokens,omitnil,omitempty" name:"TotalTokens"`
+
+	// 输入图片数量
+	TotalImages *uint64 `json:"TotalImages,omitnil,omitempty" name:"TotalImages"`
+}
+
+type OnlineSearchOptions struct {
+	// 搜索引擎。支持 bing 和 sogou。
+	Engine *string `json:"Engine,omitnil,omitempty" name:"Engine"`
+}
+
+type OutputMessage struct {
+	// 角色
+	Role *string `json:"Role,omitnil,omitempty" name:"Role"`
+
+	// 文本内容	
+	Content *string `json:"Content,omitnil,omitempty" name:"Content"`
+
+	// 推理内容	
+	ReasoningContent *string `json:"ReasoningContent,omitnil,omitempty" name:"ReasoningContent"`
+
+	// 模型生成的工具调用
+	ToolCalls []*ToolCall `json:"ToolCalls,omitnil,omitempty" name:"ToolCalls"`
+}
+
+type PageUsage struct {
+	// 消耗总页数
+	TotalPages *int64 `json:"TotalPages,omitnil,omitempty" name:"TotalPages"`
+}
+
+type ParseDocument struct {
+	// 支持的文件类型：PDF、DOC、DOCX、PPT、PPTX、MD、TXT、XLS、
+	// XLSX、CSV、PNG、JPG、JPEG、BMP、GIF、WEBP、HEIC、EPS、ICNS、
+	// IM、PCX、PPM、TIFF、XBM、HEIF、JP2
+	// 
+	// 文档解析支持的文件大小：
+	// -PDF、DOC、DOCX、PPT、PPTX支持100M
+	// -MD、TXT、XLS、XLSX、CSV支特10M
+	// -其他支持20M
+	// 
+	// 文本切片支持的文件大小：
+	// -PDF最大300M
+	// -D0CX、D0C、PPT、PPTX最大200M
+	// -TXT、MD最大10M
+	// -其他最大20M
+	FileType *string `json:"FileType,omitnil,omitempty" name:"FileType"`
+
+	// 文件存储于腾讯云的 URL 可保障更高的下载速度和稳定性，使用腾讯云COS 文件地址。
+	FileUrl *string `json:"FileUrl,omitnil,omitempty" name:"FileUrl"`
+
+	// 文件的 base64 值，携带 MineType前缀信息。编码后的后的文件不超过 10M。
+	// 支持的文件大小：所下载文件经Base64编码后不超过 8M。文件下载时间不超过3秒。
+	// 支持的图片像素：单边介于20-10000px之间。
+	// 文件的 FileUrl、FileContent必须提供一个，如果都提供只使用 FileUrl。
+	FileContent *string `json:"FileContent,omitnil,omitempty" name:"FileContent"`
+
+	// 文档解析配置
+	DocumentParseConfig *DocumentParseConfig `json:"DocumentParseConfig,omitnil,omitempty" name:"DocumentParseConfig"`
+
+	// 文档的起始页码
+	FileStartPageNumber *int64 `json:"FileStartPageNumber,omitnil,omitempty" name:"FileStartPageNumber"`
+
+	// 文档的结束页码
+	FileEndPageNumber *int64 `json:"FileEndPageNumber,omitnil,omitempty" name:"FileEndPageNumber"`
+}
+
+// Predefined struct for user
+type ParseDocumentAsyncRequestParams struct {
+	// 文件信息。
+	Document *Document `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，可选模型列表：doc-llm。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+}
+
+type ParseDocumentAsyncRequest struct {
+	*tchttp.BaseRequest
+	
+	// 文件信息。
+	Document *Document `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，可选模型列表：doc-llm。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+}
+
+func (r *ParseDocumentAsyncRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ParseDocumentAsyncRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "Document")
+	delete(f, "ModelName")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "ParseDocumentAsyncRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ParseDocumentAsyncResponseParams struct {
+	// 任务 id
+	TaskId *string `json:"TaskId,omitnil,omitempty" name:"TaskId"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type ParseDocumentAsyncResponse struct {
+	*tchttp.BaseResponse
+	Response *ParseDocumentAsyncResponseParams `json:"Response"`
+}
+
+func (r *ParseDocumentAsyncResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ParseDocumentAsyncResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ParseDocumentRequestParams struct {
+	// 文件信息
+	Document *ParseDocument `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，doc-llm。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+}
+
+type ParseDocumentRequest struct {
+	*tchttp.BaseRequest
+	
+	// 文件信息
+	Document *ParseDocument `json:"Document,omitnil,omitempty" name:"Document"`
+
+	// 模型名称，doc-llm。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+}
+
+func (r *ParseDocumentRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ParseDocumentRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "Document")
+	delete(f, "ModelName")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "ParseDocumentRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type ParseDocumentResponseParams struct {
+	// 进度：0-100。
+	Progress *string `json:"Progress,omitnil,omitempty" name:"Progress"`
+
+	//  解析文件结果。
+	DocumentParseResultUrl *string `json:"DocumentParseResultUrl,omitnil,omitempty" name:"DocumentParseResultUrl"`
+
+	// 失败页码。
+	FailedPages []*int64 `json:"FailedPages,omitnil,omitempty" name:"FailedPages"`
+
+	// 消耗页数
+	Usage *PageUsage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。本接口为流式响应接口，当请求成功时，RequestId 会被放在 HTTP 响应的 Header "X-TC-RequestId" 中。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type ParseDocumentResponse struct {
+	tchttp.BaseSSEResponse `json:"-"`
+	Response *ParseDocumentResponseParams `json:"Response"`
+}
+
+func (r *ParseDocumentResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *ParseDocumentResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+type RerankResult struct {
+	// 对应的doc在输入候选doc数组中的位置索引值
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	Index *int64 `json:"Index,omitnil,omitempty" name:"Index"`
+
+	// 相似度分数
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	RelevanceScore *float64 `json:"RelevanceScore,omitnil,omitempty" name:"RelevanceScore"`
+
+	// doc原文内容
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	Document *string `json:"Document,omitnil,omitempty" name:"Document"`
+}
+
+// Predefined struct for user
+type RunRerankRequestParams struct {
+	// 模型名称，可选模型列表：bge-reranker-large，bge-reranker-v2-m3。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 查询文本。
+	Query *string `json:"Query,omitnil,omitempty" name:"Query"`
+
+	// 待排序的候选doc列表。
+	Documents []*string `json:"Documents,omitnil,omitempty" name:"Documents"`
+
+	// 排序返回的top文档数量, 如果没有指定则返回全部候选doc，如果指定的top_n值大于输入的候选doc数量，返回全部doc。
+	TopN *int64 `json:"TopN,omitnil,omitempty" name:"TopN"`
+
+	// 返回的排序结果列表里面是否返回每一条document原文，默认值False。
+	ReturnDocuments *bool `json:"ReturnDocuments,omitnil,omitempty" name:"ReturnDocuments"`
+}
+
+type RunRerankRequest struct {
+	*tchttp.BaseRequest
+	
+	// 模型名称，可选模型列表：bge-reranker-large，bge-reranker-v2-m3。
+	ModelName *string `json:"ModelName,omitnil,omitempty" name:"ModelName"`
+
+	// 查询文本。
+	Query *string `json:"Query,omitnil,omitempty" name:"Query"`
+
+	// 待排序的候选doc列表。
+	Documents []*string `json:"Documents,omitnil,omitempty" name:"Documents"`
+
+	// 排序返回的top文档数量, 如果没有指定则返回全部候选doc，如果指定的top_n值大于输入的候选doc数量，返回全部doc。
+	TopN *int64 `json:"TopN,omitnil,omitempty" name:"TopN"`
+
+	// 返回的排序结果列表里面是否返回每一条document原文，默认值False。
+	ReturnDocuments *bool `json:"ReturnDocuments,omitnil,omitempty" name:"ReturnDocuments"`
+}
+
+func (r *RunRerankRequest) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *RunRerankRequest) FromJsonString(s string) error {
+	f := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(s), &f); err != nil {
+		return err
+	}
+	delete(f, "ModelName")
+	delete(f, "Query")
+	delete(f, "Documents")
+	delete(f, "TopN")
+	delete(f, "ReturnDocuments")
+	if len(f) > 0 {
+		return tcerr.NewTencentCloudSDKError("ClientError.BuildRequestError", "RunRerankRequest has unknown keys!", "")
+	}
+	return json.Unmarshal([]byte(s), &r)
+}
+
+// Predefined struct for user
+type RunRerankResponseParams struct {
+	// 输出结果集。
+	Data []*RerankResult `json:"Data,omitnil,omitempty" name:"Data"`
+
+	// 消耗token数量。
+	Usage *Usage `json:"Usage,omitnil,omitempty" name:"Usage"`
+
+	// 唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。
+	RequestId *string `json:"RequestId,omitnil,omitempty" name:"RequestId"`
+}
+
+type RunRerankResponse struct {
+	*tchttp.BaseResponse
+	Response *RunRerankResponseParams `json:"Response"`
+}
+
+func (r *RunRerankResponse) ToJsonString() string {
+    b, _ := json.Marshal(r)
+    return string(b)
+}
+
+// FromJsonString It is highly **NOT** recommended to use this function
+// because it has no param check, nor strict type check
+func (r *RunRerankResponse) FromJsonString(s string) error {
+	return json.Unmarshal([]byte(s), &r)
+}
+
+type TokenUsage struct {
+	// 表示prompt的tokens数，多次返回中保持不变
+	PromptTokens *uint64 `json:"PromptTokens,omitnil,omitempty" name:"PromptTokens"`
+
+	// 回答的token总数，在流式返回中，表示到目前为止所有completion的tokens总数，多次返回中持续累加        
+	CompletionTokens *uint64 `json:"CompletionTokens,omitnil,omitempty" name:"CompletionTokens"`
+
+	// 表示prompt_tokens和completion_tokens之和 
+	TotalTokens *uint64 `json:"TotalTokens,omitnil,omitempty" name:"TotalTokens"`
+}
+
+type Tool struct {
+	// 工具类型，当前只支持function
+	Type *string `json:"Type,omitnil,omitempty" name:"Type"`
+
+	// 具体要调用的function
+	Function *ToolFunction `json:"Function,omitnil,omitempty" name:"Function"`
+}
+
+type ToolCall struct {
+	// 工具调用id
+	Id *string `json:"Id,omitnil,omitempty" name:"Id"`
+
+	// 工具调用类型，当前只支持function
+	Type *string `json:"Type,omitnil,omitempty" name:"Type"`
+
+	// 具体的function调用
+	Function *ToolCallFunction `json:"Function,omitnil,omitempty" name:"Function"`
+
+	// 索引值
+	Index *uint64 `json:"Index,omitnil,omitempty" name:"Index"`
+}
+
+type ToolCallFunction struct {
+	// function名称
+	Name *string `json:"Name,omitnil,omitempty" name:"Name"`
+
+	// function参数，一般为json字符串
+	Arguments *string `json:"Arguments,omitnil,omitempty" name:"Arguments"`
+}
+
+type ToolFunction struct {
+	// function名称，只能包含a-z，A-Z，0-9，_或-
+	Name *string `json:"Name,omitnil,omitempty" name:"Name"`
+
+	// function参数，一般为json字符串
+	Parameters *string `json:"Parameters,omitnil,omitempty" name:"Parameters"`
+
+	// function的简单描述
+	Description *string `json:"Description,omitnil,omitempty" name:"Description"`
+}
+
+type Usage struct {
+	// tokens总数
+	// 注意：此字段可能返回 null，表示取不到有效值。
+	TotalTokens *int64 `json:"TotalTokens,omitnil,omitempty" name:"TotalTokens"`
+}
+
+type WebContent struct {
+	// 搜素问题	
+	Query *string `json:"Query,omitnil,omitempty" name:"Query"`
+
+	// 标题
+	Title *string `json:"Title,omitnil,omitempty" name:"Title"`
+
+	// 链接
+	Url *string `json:"Url,omitnil,omitempty" name:"Url"`
+
+	// 时间
+	Time *string `json:"Time,omitnil,omitempty" name:"Time"`
+
+	// 网页内容	
+	Content *string `json:"Content,omitnil,omitempty" name:"Content"`
+
+	// 切片索引
+	ChunkIndex *string `json:"ChunkIndex,omitnil,omitempty" name:"ChunkIndex"`
+
+	// 分数
+	Score *string `json:"Score,omitnil,omitempty" name:"Score"`
+}

@@ -1,0 +1,175 @@
+// Copyright (c) 2017-2025 Tencent. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package v20240523
+
+const (
+	// 此产品的特有错误码
+
+	// CAM签名/鉴权错误。
+	AUTHFAILURE = "AuthFailure"
+
+	// 音频解码失败。
+	FAILEDOPERATION_AUDIODECODEFAILED = "FailedOperation.AudioDecodeFailed"
+
+	// 驱动失败
+	FAILEDOPERATION_DRIVERFAILED = "FailedOperation.DriverFailed"
+
+	// 输入图身体（头顶到脚踝）高度占比不到图片高度的二分之一
+	FAILEDOPERATION_IMAGEBODYSMALL = "FailedOperation.ImageBodySmall"
+
+	// 输入图未检测到人体
+	FAILEDOPERATION_IMAGECHECKNOBODY = "FailedOperation.ImageCheckNoBody"
+
+	// 图片解码失败。
+	FAILEDOPERATION_IMAGEDECODEFAILED = "FailedOperation.ImageDecodeFailed"
+
+	// 输入图人脸检测失败
+	FAILEDOPERATION_IMAGEDETECTFACEFAILED = "FailedOperation.ImageDetectFaceFailed"
+
+	// 图片下载失败。
+	FAILEDOPERATION_IMAGEDOWNLOADERROR = "FailedOperation.ImageDownloadError"
+
+	// 人脸检测失败
+	FAILEDOPERATION_IMAGEFACEDETECTFAILED = "FailedOperation.ImageFaceDetectFailed"
+
+	// 输入图中存在多人
+	FAILEDOPERATION_IMAGEMANYPEOPLE = "FailedOperation.ImageManyPeople"
+
+	// 不支持的图片文件。
+	FAILEDOPERATION_IMAGENOTSUPPORTED = "FailedOperation.ImageNotSupported"
+
+	// 输入图高宽比未在1.2～2.0范围内
+	FAILEDOPERATION_IMAGERADIOEXCCEED = "FailedOperation.ImageRadioExcceed"
+
+	// base64编码后的图片数据过大。
+	FAILEDOPERATION_IMAGESIZEEXCEED = "FailedOperation.ImageSizeExceed"
+
+	// 服务内部错误，请重试。
+	FAILEDOPERATION_INNERERROR = "FailedOperation.InnerError"
+
+	// 任务不存在。
+	FAILEDOPERATION_JOBNOTEXIST = "FailedOperation.JobNotExist"
+
+	// 任务不存在。
+	FAILEDOPERATION_JOBNOTFOUND = "FailedOperation.JobNotFound"
+
+	// 核心关节点未检测到
+	FAILEDOPERATION_KEYPOINTUNDETECTED = "FailedOperation.KeyPointUndetected"
+
+	// 音频审核失败
+	FAILEDOPERATION_MODERATIONAUDIOFAILED = "FailedOperation.ModerationAudioFailed"
+
+	// 内容审核不通过。
+	FAILEDOPERATION_MODERATIONFAILED = "FailedOperation.ModerationFailed"
+
+	// ModerationFailed
+	FAILEDOPERATION_MODERATIONRESPONSEERROR = "FailedOperation.ModerationResponseError"
+
+	// 后端服务超时。
+	FAILEDOPERATION_REQUESTTIMEOUT = "FailedOperation.RequestTimeout"
+
+	// 系统内部错误。
+	FAILEDOPERATION_SERVERERROR = "FailedOperation.ServerError"
+
+	// 请求声伴分离失败，请重试。
+	FAILEDOPERATION_SUBMITASSPFAILED = "FailedOperation.SubmitAsspFailed"
+
+	// 模板视频首帧未检测到人脸
+	FAILEDOPERATION_TEMPLATEFIRSTFRAMENOTDETECTFACE = "FailedOperation.TemplateFirstFrameNotDetectFace"
+
+	// 模板视频存在未检测到人体的帧
+	FAILEDOPERATION_TEMPLATENOTDETECTBODY = "FailedOperation.TemplateNotDetectBody"
+
+	// 内部错误。
+	INTERNALERROR = "InternalError"
+
+	// 参数错误。
+	INVALIDPARAMETER = "InvalidParameter"
+
+	// 参数不合法。
+	INVALIDPARAMETER_INVALIDPARAMETER = "InvalidParameter.InvalidParameter"
+
+	// 参数VideoUrl格式不合法。
+	INVALIDPARAMETER_VIDEOURLINVALID = "InvalidParameter.VideoUrlInvalid"
+
+	// 参数取值错误。
+	INVALIDPARAMETERVALUE = "InvalidParameterValue"
+
+	// 不支持的音频时长。
+	INVALIDPARAMETERVALUE_INVALIDAUDIODURATION = "InvalidParameterValue.InvalidAudioDuration"
+
+	// 不支持的音频格式。
+	INVALIDPARAMETERVALUE_INVALIDAUDIOFORMAT = "InvalidParameterValue.InvalidAudioFormat"
+
+	// 不支持的图片长宽比。
+	INVALIDPARAMETERVALUE_INVALIDIMAGEASPECTRATIO = "InvalidParameterValue.InvalidImageAspectRatio"
+
+	// 不支持的图片格式
+	INVALIDPARAMETERVALUE_INVALIDIMAGEFORMAT = "InvalidParameterValue.InvalidImageFormat"
+
+	// 图片分辨率超限。
+	INVALIDPARAMETERVALUE_INVALIDIMAGERESOLUTION = "InvalidParameterValue.InvalidImageResolution"
+
+	// 不支持的图片大小
+	INVALIDPARAMETERVALUE_INVALIDIMAGESIZE = "InvalidParameterValue.InvalidImageSize"
+
+	// 不支持的模型。
+	INVALIDPARAMETERVALUE_INVALIDMODEL = "InvalidParameterValue.InvalidModel"
+
+	// 图片中没有人脸。
+	INVALIDPARAMETERVALUE_NOFACEINPHOTO = "InvalidParameterValue.NoFaceInPhoto"
+
+	// 人脸角度过大。
+	INVALIDPARAMETERVALUE_TOOLARGEFACEANGLE = "InvalidParameterValue.TooLargeFaceAngle"
+
+	// 人脸质量过低。
+	INVALIDPARAMETERVALUE_TOOLOWFACEQUALITY = "InvalidParameterValue.TooLowFaceQuality"
+
+	// 人脸数量超过1。
+	INVALIDPARAMETERVALUE_TOOMANYFACES = "InvalidParameterValue.TooManyFaces"
+
+	// 人脸遮挡过多。
+	INVALIDPARAMETERVALUE_TOOMUCHFACEOCCLUSION = "InvalidParameterValue.TooMuchFaceOcclusion"
+
+	// 人脸过小。
+	INVALIDPARAMETERVALUE_TOOSMALLFACESIZE = "InvalidParameterValue.TooSmallFaceSize"
+
+	// URL格式不合法。
+	INVALIDPARAMETERVALUE_URLILLEGAL = "InvalidParameterValue.UrlIllegal"
+
+	// 缺少参数错误。
+	MISSINGPARAMETER = "MissingParameter"
+
+	// 请求的次数超过了频率限制。
+	REQUESTLIMITEXCEEDED = "RequestLimitExceeded"
+
+	// 提交任务数超过最大并发。
+	REQUESTLIMITEXCEEDED_JOBNUMEXCEED = "RequestLimitExceeded.JobNumExceed"
+
+	// 资源不足。
+	RESOURCEINSUFFICIENT = "ResourceInsufficient"
+
+	// 服务正在开通中，请稍等。
+	RESOURCEUNAVAILABLE_ISOPENING = "ResourceUnavailable.IsOpening"
+
+	// 计费状态未知。
+	RESOURCEUNAVAILABLE_NOTEXIST = "ResourceUnavailable.NotExist"
+
+	// 账号已欠费。
+	RESOURCESSOLDOUT_CHARGESTATUSEXCEPTION = "ResourcesSoldOut.ChargeStatusException"
+
+	// 未授权操作。
+	UNAUTHORIZEDOPERATION = "UnauthorizedOperation"
+)
