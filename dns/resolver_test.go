@@ -5,7 +5,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	r := New("8.8.8.8:53")
+	r := New("223.5.5.5:53")
 	if r == nil {
 		t.Fatal("New() 不应返回 nil")
 	}
@@ -15,7 +15,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestLookup_InvalidHost(t *testing.T) {
-	r := New("8.8.8.8:53")
+	r := New("223.5.5.5:53")
 	// 解析一个不存在的域名——可能返回错误，也可能因为 DNS 劫持返回结果
 	// 此处仅验证函数不会 panic
 	ips, err := r.Lookup("this-domain-definitely-does-not-exist-12345.invalid")
