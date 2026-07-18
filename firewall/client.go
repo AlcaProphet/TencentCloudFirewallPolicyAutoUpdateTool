@@ -31,17 +31,18 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-// GetRules 获取实例当前所有防火墙规则
-func (c *Client) GetRules(instanceID string) ([]*lighthouse.FirewallRuleInfo, int64, error) {
+// GetRules 获取实例当前所有防火墙规则（单次最多 100 条）
+func (c *Client) GetRules(instanceID string) ([]*lighthouse.FirewallRuleInfo, uint64, error) {
 	req := lighthouse.NewDescribeFirewallRulesRequest()
 	req.InstanceId = common.StringPtr(instanceID)
+	req.Limit = common.Int64Ptr(100) // API 最大分页数，覆盖默认的 20
 
 	resp, err := c.client.DescribeFirewallRules(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询防火墙规则失败: %w", err)
 	}
 
-	version := int64(0)
+	version := uint64(0)
 	if resp.Response.FirewallVersion != nil {
 		version = *resp.Response.FirewallVersion
 	}

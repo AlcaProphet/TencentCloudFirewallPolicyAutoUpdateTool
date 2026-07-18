@@ -20,15 +20,16 @@ type ruleKey struct {
 	action        string
 }
 
-// ownedRules 从全量规则中提取本工具管理的规则
-// 匹配条件: FirewallRuleDescription 以 [RULE_TAG: 开头
-func ownedRules(allRules []*lighthouse.FirewallRuleInfo, tagPrefix string) []*lighthouse.FirewallRuleInfo {
+// ownedRules 从全量规则中提取本工具管理的、属于指定域名的规则
+// 匹配条件: FirewallRuleDescription 以 [RULE_TAG:hostname] 开头
+func ownedRules(allRules []*lighthouse.FirewallRuleInfo, tagPrefix, hostname string) []*lighthouse.FirewallRuleInfo {
+	prefix := "[" + tagPrefix + ":" + hostname + "]"
 	var owned []*lighthouse.FirewallRuleInfo
 	for _, r := range allRules {
 		if r.FirewallRuleDescription == nil {
 			continue
 		}
-		if strings.HasPrefix(*r.FirewallRuleDescription, "["+tagPrefix+":") {
+		if strings.HasPrefix(*r.FirewallRuleDescription, prefix) {
 			owned = append(owned, r)
 		}
 	}

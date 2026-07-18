@@ -98,8 +98,8 @@ func (s *Syncer) syncDomain(rule config.DomainRule, allRules []*lighthouse.Firew
 		return
 	}
 
-	// 2. 过滤本工具管理的规则
-	owned := ownedRules(allRules, s.cfg.RuleTag)
+	// 2. 过滤本工具管理的、属于该域名的规则
+	owned := ownedRules(allRules, s.cfg.RuleTag, rule.Host)
 
 	// 3. diff 对比
 	toAdd, toDelete := Diff(rule.Host, resolved, rule, desc, owned)
