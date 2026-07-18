@@ -20,10 +20,10 @@ type ruleKey struct {
 	action        string
 }
 
-// ownedRules 从全量规则中提取本工具管理的、属于指定域名的规则
-// 匹配条件: FirewallRuleDescription 以 [RULE_TAG:hostname] 开头
-func ownedRules(allRules []*lighthouse.FirewallRuleInfo, tagPrefix, hostname string) []*lighthouse.FirewallRuleInfo {
-	prefix := "[" + tagPrefix + ":" + hostname + "]"
+// ownedRules 从全量规则中提取本工具管理的规则
+// 匹配条件: FirewallRuleDescription 以 [RULE_TAG] 开头
+func ownedRules(allRules []*lighthouse.FirewallRuleInfo, tagPrefix string) []*lighthouse.FirewallRuleInfo {
+	prefix := "[" + tagPrefix + "]"
 	var owned []*lighthouse.FirewallRuleInfo
 	for _, r := range allRules {
 		if r.FirewallRuleDescription == nil {
@@ -68,7 +68,7 @@ func buildExpectedRules(resolved []dns.ResolvedIP, rule config.DomainRule, desc 
 	return rules
 }
 
-// buildDescription 构建规则描述: [prefix] [comment]
+// buildDescription 构建规则描述: [prefix][comment]
 // 若无备注则仅保留 prefix；prefix 不会被截断
 func buildDescription(prefix, comment string) string {
 	if comment == "" {
@@ -79,24 +79,35 @@ func buildDescription(prefix, comment string) string {
 
 // truncateDescription 截断描述文本，prefix 不会被截断（ownedRules 依赖它做匹配）
 // 仅截断 detail 部分，超出 maxBytes 时追加 "...(truncated)"
+// 使用 rune 级别截断，避免切断多字节 UTF-8 字符导致乱码
 //
 // 注意：若 prefix 本身已接近或超过 maxBytes，截断后的总长度可能超出 maxBytes，
-// 但仍在腾讯云 API 硬限制（64 字节）之内。用户应避免使用过长的 RULE_TAG 或域名。
+// 但仍在腾讯云 API 硬限制（64 字节）之内。用户应避免使用过长的 RULE_TAG。
 func truncateDescription(prefix, detail string, maxBytes int) string {
-	full := prefix + " " + detail
+	full := prefix + detail
 	if len(full) <= maxBytes {
 		return full
 	}
 	suffix := "...(truncated)"
-	prefixLen := len(prefix) + 1 // +1 为 prefix 和 detail 之间的空格
-	available := maxBytes - prefixLen - len(suffix)
+	prefixByteLen := len(prefix)
+	available := maxBytes - prefixByteLen - len(suffix)
 	if available < 1 {
 		available = 1
 	}
-	if available > len(detail) {
-		available = len(detail)
+
+	// 按 rune 截断，避免在多字节 UTF-8 字符中间切断
+	detailRunes := []rune(detail)
+	cutIdx := 0
+	byteCount := 0
+	for ; cutIdx < len(detailRunes); cutIdx++ {
+		charBytes := len(string(detailRunes[cutIdx]))
+		if byteCount+charBytes > available {
+			break
+		}
+		byteCount += charBytes
 	}
-	return prefix + " " + detail[:available] + suffix
+
+	return prefix + string(detailRunes[:cutIdx]) + suffix
 }
 
 // makeRule 创建单条防火墙规则

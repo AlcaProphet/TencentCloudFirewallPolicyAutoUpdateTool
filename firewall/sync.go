@@ -81,7 +81,7 @@ func (s *Syncer) syncAll() {
 
 // syncDomain 同步单个域名的规则
 func (s *Syncer) syncDomain(rule config.DomainRule) {
-	desc := s.cfg.RuleDescription(rule.Host)
+	desc := s.cfg.RuleDescription()
 
 	// 1. DNS 解析
 	resolved, err := s.resolver.Lookup(rule.Host)
@@ -121,7 +121,7 @@ func (s *Syncer) applyWithRetry(hostname string, rule config.DomainRule, desc st
 		}
 
 		// 重新过滤本工具管理的规则
-		owned := ownedRules(allRules, s.cfg.RuleTag, hostname)
+		owned := ownedRules(allRules, s.cfg.RuleTag)
 
 		// 重新 diff
 		toAdd, toDelete := Diff(resolved, rule, desc, owned)

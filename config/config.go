@@ -95,9 +95,9 @@ func Load() (*Config, error) {
 }
 
 // RuleDescription 生成规则描述标识
-// 格式: [RULE_TAG:hostname]
-func (c *Config) RuleDescription(hostname string) string {
-	return fmt.Sprintf("[%s:%s]", c.RuleTag, hostname)
+// 格式: [RULE_TAG]
+func (c *Config) RuleDescription() string {
+	return fmt.Sprintf("[%s]", c.RuleTag)
 }
 
 // getEnv 读取环境变量，带默认值（自动去除首尾空白）

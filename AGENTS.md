@@ -4,6 +4,15 @@
 
 **FWAlizer**（Firewall DNS Synchronizer）是一个运行在 Docker 容器中的轻量级自动化工具。它通过 DNS 解析指定域名的 IP 地址，并自动将解析结果同步到腾讯云 Lighthouse 实例的防火墙白名单中。
 
+## 📋 待办计划
+
+- [ ] **多实例多地域支持**：当前仅支持单实例单地域（`LIGHTHOUSE_INSTANCE_ID` + `LIGHTHOUSE_REGION`）。需改造为支持多实例多地域，涉及：
+  - 配置格式：`LIGHTHOUSE_INSTANCES=lhins-xxx|ap-guangzhou,lhins-yyy|ap-shanghai`
+  - 多 Client 管理：按 region 复用 SDK client
+  - 同步循环：外层遍历所有实例
+  - API 频率控制：实例间需额外间隔（共享 10次/秒 配额）
+  - 检测到规则已存在时，应该提示并跳过，而不是报错
+
 ## 技术栈
 
 | 层 | 技术 | 说明 |

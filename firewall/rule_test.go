@@ -11,8 +11,8 @@ import (
 )
 
 func TestOwnedRules(t *testing.T) {
-	desc1 := "[auto-dns:api.example.com] TCP 443"
-	desc2 := "[auto-dns:cdn.example.com] TCP 443"
+	desc1 := "[auto-dns] TCP 443"
+	desc2 := "[auto-dns] TCP 80"
 	desc3 := "[manual] some rule"
 
 	allRules := []*lighthouse.FirewallRuleInfo{
@@ -22,9 +22,9 @@ func TestOwnedRules(t *testing.T) {
 		{FirewallRuleDescription: nil},
 	}
 
-	owned := ownedRules(allRules, "auto-dns", "api.example.com")
-	if len(owned) != 1 {
-		t.Errorf("期望 1 条规则，实际 %d", len(owned))
+	owned := ownedRules(allRules, "auto-dns")
+	if len(owned) != 2 {
+		t.Errorf("期望 2 条规则，实际 %d", len(owned))
 	}
 }
 
@@ -38,7 +38,7 @@ func TestDiff_AddOnly(t *testing.T) {
 		Ports:    "443",
 		Action:   "ACCEPT",
 	}
-	desc := "[auto-dns:api.example.com]"
+	desc := "[auto-dns]"
 
 	toAdd, toDelete := Diff(resolved, rule, desc, nil)
 
@@ -59,13 +59,13 @@ func TestDiff_DeleteOnly(t *testing.T) {
 		Ports:    "443",
 		Action:   "ACCEPT",
 	}
-	desc := "[auto-dns:api.example.com]"
+	desc := "[auto-dns]"
 
 	proto := "TCP"
 	port := "443"
 	action := "ACCEPT"
 	cidr := "1.2.3.4/32"
-	descInfo := "[auto-dns:api.example.com] TCP 443"
+	descInfo := "[auto-dns] TCP 443"
 
 	existing := []*lighthouse.FirewallRuleInfo{
 		{
@@ -98,13 +98,13 @@ func TestDiff_NoChange(t *testing.T) {
 		Ports:    "443",
 		Action:   "ACCEPT",
 	}
-	desc := "[auto-dns:api.example.com]"
+	desc := "[auto-dns]"
 
 	proto := "TCP"
 	port := "443"
 	action := "ACCEPT"
 	cidr := "1.2.3.4/32"
-	descInfo := "[auto-dns:api.example.com] TCP 443"
+	descInfo := "[auto-dns] TCP 443"
 
 	existing := []*lighthouse.FirewallRuleInfo{
 		{
@@ -170,7 +170,7 @@ func TestBuildExpectedRules_TCPPlusUDP(t *testing.T) {
 		Ports:    "443",
 		Action:   "ACCEPT",
 	}
-	desc := "[auto-dns:test]"
+	desc := "[auto-dns]"
 
 	rules := buildExpectedRules(resolved, rule, desc)
 	if len(rules) != 2 {
@@ -192,11 +192,10 @@ func TestTruncateDescription(t *testing.T) {
 		max    int
 		want   string
 	}{
-		{"不截断", "[auto-dns:api.example.com]", "生产API", 50, "[auto-dns:api.example.com] 生产API"},
-		{"刚好等于50", "[auto-dns:abc]", "12345678901234567890123456789012345", 50,
-			"[auto-dns:abc] 12345678901234567890123456789012345"},
-		{"超长截断", "[auto-dns:api.example.com]", "very long comment for testing truncation", 50,
-			"[auto-dns:api.example.com] very long...(truncated)"},
+		{"不截断", "[auto-dns]", "生产API", 20, "[auto-dns]生产API"},
+		{"刚好等于20", "[auto-dns]", "1234567890", 20, "[auto-dns]1234567890"},
+		{"超长截断", "[auto-dns]", "very long comment for testing truncation", 28,
+			"[auto-dns]very...(truncated)"},
 	}
 
 	for _, tt := range tests {
@@ -223,8 +222,8 @@ func TestBuildDescription(t *testing.T) {
 		comment string
 		want    string
 	}{
-		{"无备注", "[auto-dns:api.example.com]", "", "[auto-dns:api.example.com]"},
-		{"有备注", "[auto-dns:api.example.com]", "生产API", "[auto-dns:api.example.com] 生产API"},
+		{"无备注", "[auto-dns]", "", "[auto-dns]"},
+		{"有备注", "[auto-dns]", "生产API", "[auto-dns]生产API"},
 	}
 
 	for _, tt := range tests {
