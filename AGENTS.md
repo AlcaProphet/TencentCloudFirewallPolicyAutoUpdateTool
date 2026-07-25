@@ -51,17 +51,19 @@
 
 ## 三、防火墙规则操作约束
 
-- **绝不**使用 `ModifyFirewallRules`（全量覆盖，会误删非本工具管理的规则）
-- **只用** `CreateFirewallRules`（增量添加）和 `DeleteFirewallRules`（精确删除）
+- **绝不**使用全量覆盖类 API（如 Lighthouse 的 `ModifyFirewallRules`、CVM 的“重置安全组规则”），会误删非本工具管理的规则
+- **只用**增量添加 + 精确删除（各云对应 API 详见 Build1.md 第五节）
 - 所有由本工具创建的规则，通过对应的描述字段标记，格式：
   ```
   [TAG] comment
   ```
   示例：`[auto-dns] 生产API`
 - 不同云厂商的规则标识字段不同（详见 Build1.md），均以 `[TAG]` 前缀识别
-- 检测到规则已存在时，提示并跳过，不报错
+- 删除时“规则已不存在”视为成功（幂等），不报错
+- 添加时“规则已存在”视为成功，WARN 日志并跳过
 - 支持协议：TCP / UDP / TCP+UDP / **ICMP**（ICMP 时端口固定为 ALL）
 - 端口格式：单端口、逗号分隔、范围（`8000-8010`）、`ALL`
+- 腾讯云 CVM 安全组规则上限 **100 条**，接近上限时停止新增并告警
 
 ---
 
@@ -91,7 +93,7 @@
 ## 六、乐观锁与重试
 
 - 每次写入前重新拉取最新规则状态（Describe → Diff → Create/Delete）
-- 不传入 `FirewallVersion` 参数（由云 API 自行管理版本号）
+- 不传入版本号参数（Lighthouse 的 `FirewallVersion`、CVM 的 `Version`，由云 API 自行管理）
 - 写入失败自动重试（最多 3 次，指数退避）
 - 重试时重新走完整流程：Describe → Diff → Create/Delete
 

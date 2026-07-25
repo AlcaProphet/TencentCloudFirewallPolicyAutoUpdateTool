@@ -20,7 +20,7 @@ fwalizer/
 │   ├── store.go                 # SQLite 持久化
 │   └── validate.go              # 配置校验
 ├── dns/
-│   └── resolver.go              # DNS 解析（基本不变）
+│   └── resolver.go              # DNS 解析
 ├── provider/                    # 多云抽象层
 │   ├── provider.go              # Provider 接口定义
 │   ├── registry.go              # Provider 注册表（工厂模式）
@@ -29,7 +29,7 @@ fwalizer/
 │   ├── tc_cvm.go                # 腾讯云 CVM 安全组实现
 │   ├── ali_swas.go              # 阿里云轻量云实现
 │   └── ali_ecs.go               # 阿里云 ECS 安全组实现
-├── syncer/                      # 同步引擎（从 firewall/ 重命名）
+├── syncer/                      # 同步引擎
 │   ├── syncer.go                # 同步主循环
 │   ├── retry.go                 # 重试逻辑（指数退避）
 │   └── ratelimit.go             # API 频率控制
@@ -76,14 +76,14 @@ const (
 
 ```go
 type RuleInfo struct {
-    Protocol      string // TCP / UDP / ICMP / ALL
+    Protocol      string // TCP / UDP / TCP+UDP / ICMP / ALL
     Port          string // 归一化为 "port" 或 "start-end"
     CidrBlock     string // IPv4 CIDR
     Ipv6CidrBlock string // IPv6 CIDR
     Action        string // ACCEPT / DROP
     Description   string // 规则描述/备注
-    PolicyIndex   string // 规则索引（安全组类需要）
-    RuleID        string // 规则唯一 ID
+    PolicyIndex   string // 规则索引（CVM 安全组删除时需要）
+    RuleID        string // 规则唯一 ID（阿里云 SWAS/ECS 删除时需要）
 }
 ```
 
@@ -121,7 +121,10 @@ type Config struct {
     Interval    time.Duration
     DNS         string
     DNSTimeout  time.Duration  // DNS 解析超时，默认 10s
+    DNSFailThreshold int      // DNS 连续失败熔断阈值，默认 5
     LogLevel    string         // debug / info / warn / error
+    WebUIPort   int            // WebUI 端口，默认 9090
+    Mode        string         // 运行模式：env / webui（空 = 自动检测）
 }
 ```
 
@@ -163,23 +166,25 @@ type Provider interface {
     CloudType() CloudType
     GetRules() ([]RuleInfo, error)
     CreateRules(rules []RuleAction) error
-    DeleteRules(rules []RuleAction) error
-    ConvertPort(port string) string
+    DeleteRules(rules []RuleInfo) error  // 传入 RuleInfo（含 RuleID/PolicyIndex）
+    ConvertPorts(port string) []string   // 统一端口 → 云厂商格式（可能一对多）
     TargetIndex() int
 }
 ```
 
-**ConvertPort 职责：** 将统一端口格式（如 `80,443,8000-8010`）转换为对应云厂商的端口格式：
-- 腾讯云 Lighthouse：`80,443,8000-8010`（保持原样）
-- 腾讯云 CVM：不支持逗号分隔，需拆分为多条规则（`80`、`443`、`8000-8010`）
-- 阿里云轻量云：`80/80`、`443/443`、`8000/8010`（斜杠格式，每条规则一个端口/范围）
-- 阿里云 ECS：`80/80`、`443/443`、`8000/8010`（斜杠格式，每条规则一个端口/范围）
-- ICMP 协议：腾讯云用 `ALL`，阿里云用 `-1/-1`
+**ConvertPorts 职责：** 将统一端口格式（如 `80,443,8000-8010`）转换为对应云厂商的端口格式列表：
+- 腾讯云 Lighthouse：`["80,443,8000-8010"]`（保持原样，单条规则）
+- 腾讯云 CVM：`["80", "443", "8000-8010"]`（不支持逗号分隔，拆分为多条规则）
+- 阿里云轻量云：`["80/80", "443/443", "8000/8010"]`（斜杠格式，每条规则一个端口/范围）
+- 阿里云 ECS：`["80/80", "443/443", "8000/8010"]`（斜杠格式，每条规则一个端口/范围）
+- ICMP 协议：腾讯云用 `ALL`，阿里云用 `-1/-1`（不经过 ConvertPorts，由 Provider 内部处理）
+
+**DeleteRules 说明：** 传入 `[]RuleInfo`（而非 RuleAction），因为删除需要 RuleID（阿里云）或 PolicyIndex（CVM）等查询时才有的字段。
 
 ### 3.2 工厂注册
 
 ```go
-type Factory func(cfg TargetConfig) (Provider, error)
+type Factory func(cfg TargetConfig, pool *ClientPool) (Provider, error)
 
 var registry = map[CloudType]Factory{}
 
@@ -187,12 +192,12 @@ func Register(cloudType CloudType, factory Factory) {
     registry[cloudType] = factory
 }
 
-func NewProvider(cfg TargetConfig) (Provider, error) {
+func NewProvider(cfg TargetConfig, pool *ClientPool) (Provider, error) {
     factory, ok := registry[cfg.CloudType]
     if !ok {
         return nil, fmt.Errorf("不支持的云产品类型: %s", cfg.CloudType)
     }
-    return factory(cfg)
+    return factory(cfg, pool)
 }
 ```
 
@@ -225,9 +230,10 @@ func Diff(
     rule DomainRule,
     desc string,
     existing []RuleInfo,
-    portConverter func(string) string,
-) (toAdd []RuleAction, toDelete []RuleAction) {
+    portConverter func(string) []string,
+) (toAdd []RuleAction, toDelete []RuleInfo) {
     // 通用 diff 逻辑，与云厂商无关
+    // toDelete 返回 RuleInfo（保留 RuleID/PolicyIndex 供删除使用）
 }
 ```
 
@@ -291,9 +297,11 @@ func (s *Syncer) syncAll() {
 func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
     switch cloudType {
     case CloudAliSWAS:
-        return 800 * time.Millisecond  // 100次/60秒
+        return 800 * time.Millisecond  // 100次/60秒，留余量
+    case CloudTCLighthouse:
+        return 200 * time.Millisecond  // 10次/秒，留余量
     default:
-        return 500 * time.Millisecond  // 腾讯云、阿里云 ECS
+        return 100 * time.Millisecond  // CVM 50次/秒、阿里云 ECS 无限制
     }
 }
 ```
@@ -302,7 +310,42 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 
 - 写入前重新 Describe → 重新 diff → 重新 Create/Delete
 - 最多 3 次，指数退避
-- 不传入 FirewallVersion（由云 API 自行管理）
+- 不传入 FirewallVersion / Version 参数（由云 API 自行管理版本号）
+
+### 4.5 错误处理策略
+
+**“规则已不存在”视为成功：**
+
+删除时如果云 API 返回“规则不存在”类错误，说明规则已被其他途径删除，应视为成功（幂等）：
+
+| 云厂商 | 错误码 | 处理 |
+|--------|--------|------|
+| 腾讯云 Lighthouse | `ResourceNotFound.FirewallRulesNotFound` | 视为成功，跳过 |
+| 腾讯云 CVM | 删除不匹配的规则时静默成功 | 无需处理 |
+| 阿里云 SWAS | `InvalidInstanceId.NotFound` / 规则 ID 无效 | 视为成功，跳过 |
+| 阿里云 ECS | `InvalidSecurityGroupRuleId.NotFound` / `InvalidSecurityGroupRule.RuleNotExist` | 视为成功，跳过 |
+
+**“规则已存在”视为成功：**
+
+添加时如果云 API 返回“规则已存在”，说明无需重复添加：
+
+| 云厂商 | 错误码 | 处理 |
+|--------|--------|------|
+| 腾讯云 Lighthouse | `InvalidParameter.FirewallRulesExist` | WARN 日志，跳过 |
+| 阿里云 SWAS | `FirewallRuleAlreadyExist` | WARN 日志，跳过 |
+| 阿里云 ECS | 调用成功但不重复添加 | 无需处理 |
+
+**真正错误（需重试）：**
+- 网络超时、连接失败
+- 频率限制（`RequestLimitExceeded`）
+- 服务端内部错误（`InternalError`）
+- 防火墙忙（`UnsupportedOperation.FirewallBusy`）
+
+### 4.6 规则数量限制
+
+- 腾讯云 CVM 安全组：单安全组规则上限 **100 条**（入站 + 出站合计）
+- 其他云厂商：暂无硬性限制（Lighthouse 无明确上限，阿里云较宽松）
+- CreateRules 前应检查当前规则数，接近上限时记录 ERROR 日志并跳过新增
 
 ---
 
@@ -326,16 +369,17 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 
 ### 6.1 腾讯云 Lighthouse
 
-- 迁移现有 `firewall/client.go` 和 `firewall/rule.go`
-- 保持 API 调用方式不变
-- 规则标识：`FirewallRuleDescription` 以 `[TAG]` 开头
+- 规则标识：`FirewallRuleDescription` 以 `[TAG]` 开头（≤ 64 字符）
+- IPv6：使用 `Ipv6CidrBlock` 字段（与 `CidrBlock` 互斥，分两条规则）
+- IPv6 + ICMP 时协议需用 `ICMPv6`（API 支持 TCP/UDP/ICMP/ICMPv6/ALL）
 - **绝不**使用 `ModifyFirewallRules`
 
 ### 6.2 腾讯云 CVM 安全组
 
 - SDK: `tencentcloud-sdk-go/tencentcloud/vpc/v20170312`
 - 操作对象是 `SecurityGroupId`（非 InstanceId）
-- 端口格式：仅支持单端口（`80`）或范围（`8000-8010`），**不支持逗号分隔**，需在 ConvertPort 中拆分为多条规则
+- 端口格式：仅支持单端口（`80`）或范围（`8000-8010`），**不支持逗号分隔**，需在 ConvertPorts 中拆分为多条规则
+- 本工具只操作 **Ingress**（入站）规则，不触碰 Egress
 - 删除支持两种方式：指定 `PolicyIndex` 或规则匹配（Action + Protocol + CidrBlock + Port）
 - 规则描述：`PolicyDescription`
 - 一次请求只能创建/删除单个方向的规则（Ingress 或 Egress）
@@ -360,51 +404,58 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 - 规则标识：`Description`（1~512 个字符）
 - 规则已存在时调用 AuthorizeSecurityGroup 成功但不重复添加
 - 删除支持两种方式：指定 `SecurityGroupRuleId`（推荐）或 Permissions 匹配
+- 本工具只操作 **Ingress**（入方向）规则，使用 `AuthorizeSecurityGroup` / `RevokeSecurityGroup`
 - 优先级 `Priority`：默认 1，范围 1~100
 
 ---
 
-## 七、.env 配置格式（重构后）
+## 七、.env 配置格式
 
 ```env
-# 云资源目标（provider|resource_id|region）
+# ═══ 云资源目标（provider|resource_id|region） ═══
 TARGETS=tc_lighthouse|lhins-abc|ap-guangzhou, \
         tc_cvm|sg-def|ap-shanghai, \
         ali_swas|ace0706b|cn-hangzhou, \
         ali_ecs|sg-ghi|cn-shenzhen
 
-# 云厂商凭据（按厂商分离，避免密钥泄露）
+# ═══ 云厂商凭据（按厂商分离） ═══
 TC_ACCESS_ID=
 TC_ACCESS_KEY=
 ALI_ACCESS_ID=
 ALI_ACCESS_KEY=
 
-# 域名规则（host|protocol|ports|action|targets|comment）
+# ═══ 域名规则（host|protocol|ports|action|targets|comment） ═══
 RULES=api.example.com|TCP|443,80|ACCEPT||生产API, \
       vpn.example.com|UDP|1194|ACCEPT|2|VPN接入, \
       game.example.com|TCP|8000-8010|ACCEPT|1,3|游戏端口, \
       ping.example.com|ICMP|ALL|ACCEPT||允许Ping
 
-# 全局设置
+# ═══ 全局设置 ═══
 TAG=auto-dns
 INTERVAL=5m
 DNS=8.8.8.8:53
 LOG_LEVEL=info
-WEBUI_PORT=9090
+
+# ═══ 可选配置（有合理默认值，不填则自动生效） ═══
+# WEBUI_PORT=9090            # WebUI 端口（默认 9090）
+# DNS_TIMEOUT=10s            # DNS 解析超时（默认 10s）
+# DNS_FAIL_THRESHOLD=5       # DNS 连续失败熔断阈值（默认 5）
+# FWALIZER_MODE=env|webui    # 强制运行模式（默认自动检测）
 ```
 
-### 变量名变更对照
+### 字段说明
 
-| 旧变量 | 新变量 | 变化 |
-|--------|--------|------|
-| `TENCENTCLOUD_SECRET_ID` | `TC_ACCESS_ID` | 独立凭据 |
-| `TENCENTCLOUD_SECRET_KEY` | `TC_ACCESS_KEY` | 独立凭据 |
-| `LIGHTHOUSE_INSTANCE_ID` | 内嵌 `TARGETS` | 统一资源声明 |
-| `LIGHTHOUSE_REGION` | 内嵌 `TARGETS` | 统一资源声明 |
-| `DOMAIN_RULES` | `RULES` | 新增 targets + comment 列 |
-| `RULE_TAG` | `TAG` | 精简 |
-| `CHECK_INTERVAL` | `INTERVAL` | 精简 |
-| `DNS_SERVER` | `DNS` | 精简 |
+**TARGETS 格式：** `provider|resource_id|region`
+- provider：`tc_lighthouse` / `tc_cvm` / `ali_swas` / `ali_ecs`
+- resource_id：InstanceId 或 SecurityGroupId
+- region：云厂商地域 ID
+
+**RULES 格式：** `host|protocol|ports|action|targets|comment`
+- protocol：`TCP` / `UDP` / `TCP+UDP` / `ICMP`
+- ports：单端口、逗号分隔、范围（`8000-8010`）、`ALL`；ICMP 时固定为 `ALL`
+- action：`ACCEPT` / `DROP`
+- targets：空或 `*` = 所有 Target；`1,3` = 指定编号（从 1 开始）
+- comment：可选备注，会拼接到规则描述中
 
 ### 反斜杠续行
 
@@ -436,10 +487,10 @@ package app
 
 ```bash
 # Docker 构建（不含系统托盘，纯静态）
-CGO_ENABLED=0 go build -tags docker -ldflags="-s -w -X main.version=$VERSION" .
+CGO_ENABLED=0 go build -tags docker -ldflags="-s -w -X github.com/alcaprophet/fwalizer/version.Version=$VERSION" .
 
 # 桌面构建（含系统托盘，需要 CGO）
-CGO_ENABLED=1 go build -tags desktop -ldflags="-s -w -X main.version=$VERSION" .
+CGO_ENABLED=1 go build -tags desktop -ldflags="-s -w -X github.com/alcaprophet/fwalizer/version.Version=$VERSION" .
 ```
 
 ### 8.3 构建差异
@@ -576,7 +627,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 ```
 
 - WebUI 模式：HTTP 端点检测（`/api/health`）
-- `.env` 模式：`killall -0` 进程检测
+- `.env` 模式：`pgrep fwalizer` 进程检测（Alpine 无 `killall -0`）
 
 ### 12.3 同步日志持久化（SQLite）
 
