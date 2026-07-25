@@ -808,24 +808,37 @@ func buildDesired(
     var actions []config.RuleAction
     ports := p.ConvertPorts(rule.Ports)
 
+    // TCP+UDP 协议拆分：仅 SWAS 原生支持，其他云厂商拆为 TCP + UDP 两条
+    protocols := []string{rule.Protocol}
+    if rule.Protocol == "TCP+UDP" && !supportsTCPUDP(p.CloudType()) {
+        protocols = []string{"TCP", "UDP"}
+    }
+
     for _, ip := range resolved {
         // IPv6 过滤：不支持 IPv6 的云厂商跳过
         if ip.IsIPv6 && !supportsIPv6(p.CloudType()) {
             continue
         }
-        for _, port := range ports {
-            action := config.RuleAction{
-                Protocol:    rule.Protocol,
-                Port:        port,
-                Action:      rule.Action,
-                Description: desc,
+        // ECS 不支持 ICMPv6 入站规则创建（AuthorizeSecurityGroup 无 ICMPv6），跳过
+        if ip.IsIPv6 && rule.Protocol == "ICMP" && p.CloudType() == config.CloudAliECS {
+            slog.Warn("ECS 不支持 ICMPv6 入站规则创建，跳过", "domain", rule.Host)
+            continue
+        }
+        for _, proto := range protocols {
+            for _, port := range ports {
+                action := config.RuleAction{
+                    Protocol:    proto,
+                    Port:        port,
+                    Action:      rule.Action,
+                    Description: desc,
+                }
+                if ip.IsIPv6 {
+                    action.Ipv6CidrBlock = ip.CIDR()
+                } else {
+                    action.CidrBlock = ip.CIDR()
+                }
+                actions = append(actions, action)
             }
-            if ip.IsIPv6 {
-                action.Ipv6CidrBlock = ip.CIDR()
-            } else {
-                action.CidrBlock = ip.CIDR()
-            }
-            actions = append(actions, action)
         }
     }
     return actions
@@ -839,6 +852,11 @@ func supportsIPv6(ct config.CloudType) bool {
     default:
         return true
     }
+}
+
+// supportsTCPUDP 判断云厂商是否原生支持 TCP+UDP 协议
+func supportsTCPUDP(ct config.CloudType) bool {
+    return ct == config.CloudAliSWAS // 仅 SWAS 原生支持 TCP+UDP
 }
 
 // ClientPool SDK Client 复用池
@@ -927,10 +945,10 @@ func newTCLighthouse(cfg config.TargetConfig, index int, pool *ClientPool) (Prov
 
 | 方法 | API | 关键细节 |
 |------|-----|----------|
-| `GetRules()` | `DescribeFirewallRules` | 分页查询（Limit=100），映射 FirewallRuleDescription→Description |
+| `GetRules()` | `DescribeFirewallRules` | 循环分页查询（Limit=100，返回数==Limit 则继续取下一页），映射 FirewallRuleDescription→Description |
 | `CreateRules()` | `CreateFirewallRules` | IPv6 规则用 Ipv6CidrBlock 字段，与 CidrBlock 分两条；ICMP+IPv6 用 ICMPv6 |
 | `DeleteRules()` | `DeleteFirewallRules` | 捕获 `ResourceNotFound.FirewallRulesNotFound` 视为成功 |
-| `ConvertPorts()` | 无 | 直接返回 `[port]`（Lighthouse 支持逗号分隔） |
+| `ConvertPorts()` | 无 | 总长度 ≤ 64 字符时返回 `[port]`；超限时拆分为多个单端口/范围条目 |
 
 **描述字段限制：** `FirewallRuleDescription` ≤ 64 字符，生成时需截断。截断时必须保证 `[TAG]` 前缀完整（先确保前缀，剩余空间分配给 comment）。
 
@@ -979,7 +997,6 @@ type Syncer struct {
     resolver   *dns.Resolver
     configCh   chan *config.Config
     stopCh     chan struct{}
-    wg         sync.WaitGroup
 }
 
 func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolver) *Syncer {
@@ -1200,18 +1217,20 @@ func isRetryable(err error) bool {
 // isIdempotentCreate 判断“规则已存在”
 func isIdempotentCreate(err error) bool {
     msg := err.Error()
-    return strings.Contains(msg, "FirewallRulesExist") ||
-        strings.Contains(msg, "FirewallRuleAlreadyExist")
+    return strings.Contains(msg, "FirewallRulesExist") ||        // Lighthouse
+        strings.Contains(msg, "FirewallRuleAlreadyExist") ||     // SWAS
+        strings.Contains(msg, "DuplicatePolicy") ||              // CVM
+        strings.Contains(msg, "FirewallRulesDuplicated")         // Lighthouse（同请求内重复）
 }
 
 // isIdempotentDelete 判断“规则已不存在”
 func isIdempotentDelete(err error) bool {
     msg := err.Error()
-    return strings.Contains(msg, "FirewallRulesNotFound") ||
-        strings.Contains(msg, "SecurityGroupRuleId.NotFound") ||
-        strings.Contains(msg, "SecurityGroupRule.RuleNotExist") ||
-        strings.Contains(msg, "InvalidParam.SecurityGroupRuleId") || // ECS 2024.7.8 新增错误码
-        strings.Contains(msg, "InvalidInstanceId.NotFound")
+    return strings.Contains(msg, "FirewallRulesNotFound") ||            // Lighthouse
+        strings.Contains(msg, "InvalidParam.SecurityGroupRuleId") ||    // ECS (2024.7.8+ 校验规则调整)
+        strings.Contains(msg, "InvalidSecurityGroupRuleId.NotFound") || // ECS (404)
+        strings.Contains(msg, "InvalidSecurityGroupRule.RuleNotExist") || // ECS (400)
+        strings.Contains(msg, "InvalidInstanceId.NotFound")             // SWAS
 }
 ```
 
@@ -1348,7 +1367,7 @@ func initLogger(level string) {
     case "error": lvl = slog.LevelError
     default:      lvl = slog.LevelInfo
     }
-    slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
+    slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lvl})))
 }
 ```
 
@@ -1417,6 +1436,8 @@ func main() {
     // 检测模式
     mode := app.DetectMode(os.Getenv("FWALIZER_MODE"))
 
+    var cfg *config.Config
+
     switch mode {
     case app.ModeEnv:
         // 从 .env 加载
@@ -1473,17 +1494,18 @@ go get github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc
 |------|-----|----------|
 | `GetRules()` | `DescribeSecurityGroupPolicies` | 只取 Ingress 部分；映射 PolicyDescription→Description、PolicyIndex |
 | `CreateRules()` | `CreateSecurityGroupPolicies` | 只写 Ingress；TCP/UDP 每条规则单独一个 Port，ICMP/ALL 不传 Port；检查规则总数≤100 |
-| `DeleteRules()` | `DeleteSecurityGroupPolicies` | 用 PolicyIndex 删除；只删 Ingress |
+| `DeleteRules()` | `DeleteSecurityGroupPolicies` | 用 PolicyIndex 逐条删除（按索引降序）；只删 Ingress；捕获 ResourceNotFound 视为成功 |
 | `ConvertPorts()` | 无 | `portconv.Parse(port)` 拆分为多条 |
 
 **特殊约束：**
 - 一次请求只能操作单方向（Ingress）
 - 规则总数上限 100 条（入站+出站合计，含非本工具管理的规则），CreateRules 前检查安全组**全部规则总数**
 - 规则计数可直接使用 `DescribeSecurityGroupPolicies` 返回的 `PolicyStatistics`（IngressIPv4TotalCount + IngressIPv6TotalCount + EgressIPv4TotalCount + EgressIPv6TotalCount）
-- 删除时传 `PolicyIndex` 字段（从 GetRules 查询结果中获取）
+- **删除策略：** 按 PolicyIndex **降序逐条删除**（每次请求只放一条规则，避免索引偏移问题）；删除时捕获 `ResourceNotFound` 视为成功（幂等）
 - 不传 Version 参数
 - **Port 字段限制：** 仅当 Protocol 为 TCP/UDP 时才设置 Port；ICMP/ALL 协议时 Port 字段必须省略（不传），否则 API 报错
 - IPv6CidrBlock 与 ICMP 互斥，IPv6+ICMP 需用 ICMPV6 协议
+- **协议大小写：** CreateRules 传入的 Action 转为小写（`accept`/`drop`）；GetRules 映射时统一转大写
 
 **验收：**
 ```bash
@@ -1512,7 +1534,7 @@ go get github.com/aliyun/credentials-go
 
 | 方法 | API | 关键细节 |
 |------|-----|----------|
-| `GetRules()` | `ListFirewallRules` | 分页（PageSize=100）；映射 Remark→Description、RuleId→RuleID、RuleProtocol→Protocol |
+| `GetRules()` | `ListFirewallRules` | 循环分页（PageSize=100，返回数==PageSize 则继续取下一页）；映射 Remark→Description、RuleId→RuleID、RuleProtocol→Protocol |
 | `CreateRules()` | `CreateFirewallRules` | 批量创建；SourceCidrIp 填 IP；Remark 填描述 |
 | `DeleteRules()` | `DeleteFirewallRules` | 传入 RuleIds 列表（从 RuleInfo.RuleID 获取） |
 | `ConvertPorts()` | 无 | `portconv.ToSlash(port)` 转斜杠格式 |
@@ -1521,6 +1543,8 @@ go get github.com/aliyun/credentials-go
 - 仅支持 IPv4，IPv6 解析结果跳过（记录 WARN 日志）
 - ICMP 端口用 `-1/-1`
 - 协议字段名 `RuleProtocol`，取值 TCP/UDP/TCP+UDP/ICMP
+- **DROP 规则不支持：** SWAS CreateFirewallRules API 无 Policy 字段，创建的规则均为 accept。遇到 Action=DROP 的规则时记录 WARN 并跳过（不创建）
+- **Policy 映射：** GetRules 时将 API 返回的 `accept`/`drop` 统一转为大写 `ACCEPT`/`DROP`
 - 频率限制严格（100次/60秒），Syncer 已配置 5秒/次间隔
 - Endpoint: `swas.{region}.aliyuncs.com`
 
@@ -1557,9 +1581,12 @@ go get github.com/alibabacloud-go/ecs-20140526/v7
 **特殊约束：**
 - IPv6 和 IPv4 不可同时设置，必须分两条规则
 - ICMP 端口用 `-1/-1`
+- **IPv6+ICMP 不支持：** AuthorizeSecurityGroup 无 ICMPv6 协议，遇到 IPv6+ICMP 组合直接跳过并 WARN（已在 buildDesired 中处理）
 - Description 字段 1~512 字符
 - 规则已存在时 API 调用成功但不重复添加（无需特殊处理）
 - 删除不存在的规则会返回错误码，已在 retry.go 中处理
+- **Permissions 数组长度限制：** 单次请求最多 100 条，超过时分批提交
+- **Policy 大小写：** CreateRules 传入小写 `accept`/`drop`；GetRules 映射时统一转大写
 - Endpoint: `ecs.{region}.aliyuncs.com`
 
 **验收：**
@@ -1732,7 +1759,7 @@ RUN adduser -D appuser
 COPY --from=builder /fwalizer /usr/local/bin/fwalizer
 USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget -q --spider http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
+    CMD wget -q -O /dev/null http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
 ENTRYPOINT ["fwalizer"]
 ```
 
@@ -2134,11 +2161,17 @@ type ruleKey struct {
     action        string
 }
 
+// OwnedRules 筛选本工具管理的规则（描述以 [TAG] 开头）
+// 同时过滤掉 Port 和 CidrBlock 均为空的规则（可能是模板规则，非本工具创建）
 func OwnedRules(allRules []RuleInfo, tagPrefix string) []RuleInfo {
     prefix := "[" + tagPrefix + "]"
     var owned []RuleInfo
     for _, r := range allRules {
         if strings.HasPrefix(r.Description, prefix) {
+            // 跳过模板规则（Port 和 CidrBlock 均为空）
+            if r.Port == "" && r.CidrBlock == "" && r.Ipv6CidrBlock == "" {
+                continue
+            }
             owned = append(owned, r)
         }
     }
@@ -2172,7 +2205,6 @@ type Syncer struct {
     resolver   *dns.Resolver
     configCh   chan *config.Config  // 热更新
     stopCh     chan struct{}
-    wg         sync.WaitGroup
 }
 // 注：ClientPool 由 app.Run 创建并传入 Provider 工厂，Syncer 不直接持有。
 
@@ -2186,7 +2218,7 @@ type ClientPool struct {
 ```
 
 **ClientPool 与 Provider 的关系：**
-- Syncer 持有 ClientPool，负责生命周期管理
+- ClientPool 由 `app.Run` 创建，传入 Provider 工厂函数
 - Provider 工厂函数接收 ClientPool 参数，创建时从池中获取或新建 SDK Client
 - 同一 cloudType + region + accessID 的多个 Target 复用同一个 Client
 
@@ -2204,7 +2236,7 @@ func (s *Syncer) syncAll() {
                 rules := filterRulesForTarget(s.cfg.DomainRules, p.TargetIndex())
                 for _, rule := range rules {
                     s.syncDomain(p, rule)
-                    time.Sleep(s.rateLimitInterval(ct))
+                    time.Sleep(rateLimitInterval(ct))
                 }
             }
         }(cloudType, providers)
@@ -2216,7 +2248,7 @@ func (s *Syncer) syncAll() {
 ### 4.3 频率限制
 
 ```go
-func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
+func rateLimitInterval(cloudType CloudType) time.Duration {
     switch cloudType {
     case CloudAliSWAS:
         return 5 * time.Second  // 100次/60秒，极度保守
@@ -2245,7 +2277,7 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 | 腾讯云 Lighthouse | `ResourceNotFound.FirewallRulesNotFound` | 视为成功，跳过 |
 | 腾讯云 CVM | 删除不匹配的规则时静默成功 | 无需处理 |
 | 阿里云 SWAS | `InvalidInstanceId.NotFound` / 规则 ID 无效 | 视为成功，跳过 |
-| 阿里云 ECS | `InvalidSecurityGroupRuleId.NotFound` / `InvalidSecurityGroupRule.RuleNotExist` | 视为成功，跳过 |
+| 阿里云 ECS | `InvalidParam.SecurityGroupRuleId` / `InvalidSecurityGroupRuleId.NotFound` / `InvalidSecurityGroupRule.RuleNotExist` | 视为成功，跳过 |
 
 **“规则已存在”视为成功：**
 
@@ -2281,7 +2313,8 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 | **Endpoint** | `lighthouse.tencentcloudapi.com` | `vpc.tencentcloudapi.com` | `swas.{region}.aliyuncs.com` | `ecs.{region}.aliyuncs.com` |
 | **频率限制** | 10次/秒 | 查询/删除100次/秒，创建50次/秒 | 100次/60秒 | 不限 |
 | **规则标识字段** | `FirewallRuleDescription` | `PolicyDescription` | `Remark` | `Description` |
-| **端口格式** | `80` 或 `443,80` 或 `ALL` | `80` 或 `8000-8010`（不支持逗号分隔） | `80/80` 或 `1/200`，ICMP 用 `-1/-1` | `80/80` 或 `1/200`，ICMP 用 `-1/-1` |
+| **端口格式** | `80` 或 `443,80` 或 `ALL`（Port≤64字符） | `80` 或 `8000-8010`（不支持逗号分隔） | `80/80` 或 `1/200`，ICMP 用 `-1/-1` | `80/80` 或 `1/200`，ICMP 用 `-1/-1` |
+| **TCP+UDP 协议** | 不支持，拆分为 TCP+UDP 两条 | 不支持，拆分为 TCP+UDP 两条 | 原生支持 | 不支持，拆分为 TCP+UDP 两条 |
 | **IPv6 字段** | `Ipv6CidrBlock` | `Ipv6CidrBlock` | `SourceCidrIp`（仅 IPv4，不支持 IPv6） | `Ipv6SourceCidrIp` |
 | **操作对象** | `InstanceId` | `SecurityGroupId` | `InstanceId` | `SecurityGroupId` |
 
@@ -2331,7 +2364,7 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 - 删除支持两种方式：指定 `SecurityGroupRuleId`（推荐）或 Permissions 匹配
 - 本工具只操作 **Ingress**（入方向）规则，使用 `AuthorizeSecurityGroup` / `RevokeSecurityGroup`
 - 优先级 `Priority`：默认 1，范围 1~100
-- **IPv6+ICMP 注意：** AuthorizeSecurityGroup 的 IpProtocol 列表中未明确列出 ICMPv6，但 RevokeSecurityGroup 包含。实现时应尝试使用 `ICMP` + `Ipv6SourceCidrIp`，若 API 报错则跳过该规则并记录 WARN
+- **IPv6+ICMP 不支持：** AuthorizeSecurityGroup 的 IpProtocol 不含 ICMPv6，且 ICMP 为 IPv4 专属协议（`Ipv4ProtocolConflictWithIpv6Address`）。IPv6+ICMP 组合在 buildDesired 阶段直接跳过并 WARN，不尝试 API 调用。RevokeSecurityGroup 支持 ICMPv6（删除已有规则时可用）
 - 分页方式：`NextToken` + `MaxResults`（与其他云厂商的 Offset/Limit 不同）
 
 ---
@@ -2550,7 +2583,7 @@ type EventBus struct {
 ```dockerfile
 # 兼容两种模式：WebUI 模式用 HTTP 端点，.env 模式用进程检测
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget -q --spider http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
+    CMD wget -q -O /dev/null http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
 ```
 
 - WebUI 模式：wget 访问 `/api/health` 成功即健康

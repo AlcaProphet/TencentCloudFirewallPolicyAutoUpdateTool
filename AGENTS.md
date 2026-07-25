@@ -62,6 +62,8 @@
 - 删除时“规则已不存在”视为成功（幂等），不报错
 - 添加时“规则已存在”视为成功，WARN 日志并跳过
 - 支持协议：TCP / UDP / TCP+UDP / **ICMP**（ICMP 时端口由各 Provider 按 API 要求处理：Lighthouse 传 ALL，阿里云传 -1/-1，CVM 省略 Port 字段）
+- **TCP+UDP 协议拆分：** 仅阿里云 SWAS 原生支持 TCP+UDP，Lighthouse/CVM/ECS 均不支持，由 `buildDesired()` 自动拆分为 TCP + UDP 两条规则
+- **IPv6+ICMP 处理：** Lighthouse 使用 ICMPv6 协议，CVM 使用 ICMPV6 协议，ECS 不支持（AuthorizeSecurityGroup 无 ICMPv6，直接跳过并 WARN）
 - 端口格式：单端口、逗号分隔、范围（`8000-8010`）、`ALL`
 - 腾讯云 CVM 安全组规则上限 **100 条**，接近上限时停止新增并告警
 
@@ -113,7 +115,7 @@
 - 编译镜像：`golang:1.25-alpine`
 - `CGO_ENABLED=0` 静态编译（Docker 构建）
 - 非 root 用户运行（`adduser -D appuser`）
-- 日志输出到 stdout（`docker logs` 查看）
+- 日志输出到 stdout（Text 格式，`docker logs` 查看）
 - 支持 `HEALTHCHECK`（WebUI 模式用 HTTP 端点，`.env` 模式用进程检测）
 
 ---
