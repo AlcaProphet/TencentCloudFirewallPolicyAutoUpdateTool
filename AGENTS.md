@@ -9,6 +9,7 @@
 - **模块路径**：`github.com/alcaprophet/fwalizer`
 - **Go 版本**：`go 1.25`
 - **设计文档优先**：编码前先阅读 [Design1.md](./Design1.md) 和 [Build1.md](./Build1.md)
+- **重构声明**：本项目正在进行全面重构，代码以 [Build1.md](./Build1.md) 为准。仓库中的历史代码（旧 `config/`、`dns/`、`firewall/`、`main.go` 等）可直接删除或覆盖，无需考虑向后兼容性。
 
 ---
 

@@ -769,13 +769,21 @@ func Diff(
     // 1. 构建期望规则集
     desired := buildDesired(resolved, rule, desc, p)
 
-    // 2. 构建现有规则索引
-    existingKeys := make(map[ruleKey]config.RuleInfo)
+    // 2. 筛选当前域名的现有规则（仅比较 Description 完全匹配的规则，避免误删其他域名的规则）
+    var domainExisting []config.RuleInfo
     for _, r := range existing {
+        if r.Description == desc {
+            domainExisting = append(domainExisting, r)
+        }
+    }
+
+    // 3. 构建现有规则索引
+    existingKeys := make(map[ruleKey]config.RuleInfo)
+    for _, r := range domainExisting {
         existingKeys[keyOf(r)] = r
     }
 
-    // 3. 计算 toAdd：期望中有、现有中无
+    // 4. 计算 toAdd：期望中有、现有中无
     var toAdd []config.RuleAction
     desiredKeys := make(map[ruleKey]bool)
     for _, d := range desired {
@@ -786,9 +794,9 @@ func Diff(
         }
     }
 
-    // 4. 计算 toDelete：现有中有、期望中无
+    // 5. 计算 toDelete：当前域名的现有规则中，期望中无的
     var toDelete []config.RuleInfo
-    for _, r := range existing {
+    for _, r := range domainExisting {
         k := keyOf(r)
         if !desiredKeys[k] {
             toDelete = append(toDelete, r)
@@ -821,8 +829,7 @@ func buildDesired(
         }
         // ECS 不支持 ICMPv6 入站规则创建（AuthorizeSecurityGroup 无 ICMPv6），跳过
         if ip.IsIPv6 && rule.Protocol == "ICMP" && p.CloudType() == config.CloudAliECS {
-            slog.Warn("ECS 不支持 ICMPv6 入站规则创建，跳过", "domain", rule.Host)
-            continue
+            continue // 由调用方在首次跳过时记录 WARN
         }
         for _, proto := range protocols {
             for _, port := range ports {
@@ -987,7 +994,6 @@ import (
 
     "github.com/alcaprophet/fwalizer/config"
     "github.com/alcaprophet/fwalizer/dns"
-    "github.com/alcaprophet/fwalizer/internal/tag"
     "github.com/alcaprophet/fwalizer/provider"
 )
 
@@ -997,6 +1003,7 @@ type Syncer struct {
     resolver   *dns.Resolver
     configCh   chan *config.Config
     stopCh     chan struct{}
+    doneCh     chan struct{} // Run 退出时关闭，用于等待当前轮次完成
 }
 
 func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolver) *Syncer {
@@ -1006,11 +1013,13 @@ func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolv
         resolver:  resolver,
         configCh:  make(chan *config.Config, 1),
         stopCh:    make(chan struct{}),
+        doneCh:    make(chan struct{}),
     }
 }
 
 // Run 启动同步主循环（阻塞，直到收到停止信号）
 func (s *Syncer) Run() {
+    defer close(s.doneCh)
     ticker := time.NewTicker(s.cfg.Interval)
     defer ticker.Stop()
 
@@ -1112,13 +1121,14 @@ func filterRulesForTarget(rules []config.DomainRule, targetIndex int) []config.D
     return filtered
 }
 
-// WaitForSignal 等待停止信号
+// WaitForSignal 等待停止信号，并等待 Run 完全退出（确保当前轮次完成）
 func WaitForSignal(s *Syncer) {
     sigCh := make(chan os.Signal, 1)
     signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
     <-sigCh
     slog.Info("收到停止信号，等待当前轮次完成...")
     s.Stop()
+    <-s.doneCh // 等待 Run 完全退出
 }
 ```
 
@@ -1128,7 +1138,6 @@ func WaitForSignal(s *Syncer) {
 package syncer
 
 import (
-    "context"
     "log/slog"
     "strings"
     "time"
@@ -1162,7 +1171,11 @@ func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved
 
         // 2. 筛选本工具规则 + Diff
         owned := provider.OwnedRules(allRules, s.cfg.Tag)
-        desc := tag.Format(s.cfg.Tag, rule.Comment)
+        desc := truncateDesc(tag.Format(s.cfg.Tag, rule.Comment), p.CloudType())
+        // ECS 不支持 ICMPv6 入站规则创建，跳过 IPv6 部分
+        if rule.Protocol == "ICMP" && p.CloudType() == config.CloudAliECS {
+            slog.Warn("ECS 不支持 ICMPv6 入站规则，IPv6 地址将被跳过", "domain", rule.Host)
+        }
         diff := provider.Diff(resolved, rule, desc, owned, p)
 
         // 3. 执行删除
@@ -1231,6 +1244,21 @@ func isIdempotentDelete(err error) bool {
         strings.Contains(msg, "InvalidSecurityGroupRuleId.NotFound") || // ECS (404)
         strings.Contains(msg, "InvalidSecurityGroupRule.RuleNotExist") || // ECS (400)
         strings.Contains(msg, "InvalidInstanceId.NotFound")             // SWAS
+}
+
+// truncateDesc 按云厂商描述字段长度限制截断（保证 [TAG] 前缀完整）
+func truncateDesc(desc string, ct config.CloudType) string {
+    maxLen := 0
+    switch ct {
+    case config.CloudTCLighthouse:
+        maxLen = 64 // FirewallRuleDescription ≤ 64 字符
+    default:
+        return desc // 其他云厂商限制宽松，无需截断
+    }
+    if len(desc) <= maxLen {
+        return desc
+    }
+    return desc[:maxLen]
 }
 ```
 
@@ -1536,7 +1564,7 @@ go get github.com/aliyun/credentials-go
 |------|-----|----------|
 | `GetRules()` | `ListFirewallRules` | 循环分页（PageSize=100，返回数==PageSize 则继续取下一页）；映射 Remark→Description、RuleId→RuleID、RuleProtocol→Protocol |
 | `CreateRules()` | `CreateFirewallRules` | 批量创建；SourceCidrIp 填 IP；Remark 填描述 |
-| `DeleteRules()` | `DeleteFirewallRules` | 传入 RuleIds 列表（从 RuleInfo.RuleID 获取） |
+| `DeleteRules()` | `DeleteFirewallRules` | 传入 RuleIds 列表（从 RuleInfo.RuleID 获取）；规则已不存在时 API 可能静默成功或返回错误，均视为成功 |
 | `ConvertPorts()` | 无 | `portconv.ToSlash(port)` 转斜杠格式 |
 
 **特殊约束：**
@@ -2120,11 +2148,11 @@ type Provider interface {
 ```
 
 **ConvertPorts 职责：** 将统一端口格式（如 `80,443,8000-8010`）转换为对应云厂商的端口格式列表：
-- 腾讯云 Lighthouse：`["80,443,8000-8010"]`（保持原样，单条规则）
+- 腾讯云 Lighthouse：`["80,443,8000-8010"]`（保持原样，单条规则；总长度超过 64 字符时拆分为多个条目）
 - 腾讯云 CVM：`["80", "443", "8000-8010"]`（不支持逗号分隔，拆分为多条规则）
 - 阿里云轻量云：`["80/80", "443/443", "8000/8010"]`（斜杠格式，每条规则一个端口/范围）
 - 阿里云 ECS：`["80/80", "443/443", "8000/8010"]`（斜杠格式，每条规则一个端口/范围）
-- ICMP 协议：腾讯云用 `ALL`，阿里云用 `-1/-1`（不经过 ConvertPorts，由 Provider 内部处理）
+- ICMP 协议：ConvertPorts("ALL") 返回 `["ALL"]`（腾讯云）或 `["-1/-1"]`（阿里云）；CVM 的 CreateRules 内部对 ICMP/ALL 协议省略 Port 字段不传
 
 **DeleteRules 说明：** 传入 `[]RuleInfo`（而非 RuleAction），因为删除需要 RuleID（阿里云）或 PolicyIndex（CVM）等查询时才有的字段。
 
@@ -2187,7 +2215,10 @@ func Diff(
     existing []RuleInfo,
     p Provider,
 ) DiffResult {
-    // 通用 diff 逻辑，与云厂商无关
+    // 1. 筛选当前域名的现有规则（Description == desc），避免误删其他域名的规则
+    // 2. 构建期望规则集（buildDesired，含 TCP+UDP 拆分、IPv6 过滤）
+    // 3. toAdd = 期望中有、现有中无
+    // 4. toDelete = 当前域名的现有规则中、期望中无
     // toDelete 返回 RuleInfo（保留 RuleID/PolicyIndex 供删除使用）
 }
 ```
@@ -2205,6 +2236,7 @@ type Syncer struct {
     resolver   *dns.Resolver
     configCh   chan *config.Config  // 热更新
     stopCh     chan struct{}
+    doneCh     chan struct{}        // Run 退出时关闭，WaitForSignal 等待此 channel
 }
 // 注：ClientPool 由 app.Run 创建并传入 Provider 工厂，Syncer 不直接持有。
 
@@ -2275,7 +2307,7 @@ func rateLimitInterval(cloudType CloudType) time.Duration {
 | 云厂商 | 错误码 | 处理 |
 |--------|--------|------|
 | 腾讯云 Lighthouse | `ResourceNotFound.FirewallRulesNotFound` | 视为成功，跳过 |
-| 腾讯云 CVM | 删除不匹配的规则时静默成功 | 无需处理 |
+| 腾讯云 CVM | `ResourceNotFound`（PolicyIndex 对应规则不存在） | CVM Provider 内部捕获，视为成功 |
 | 阿里云 SWAS | `InvalidInstanceId.NotFound` / 规则 ID 无效 | 视为成功，跳过 |
 | 阿里云 ECS | `InvalidParam.SecurityGroupRuleId` / `InvalidSecurityGroupRuleId.NotFound` / `InvalidSecurityGroupRule.RuleNotExist` | 视为成功，跳过 |
 
@@ -2285,7 +2317,8 @@ func rateLimitInterval(cloudType CloudType) time.Duration {
 
 | 云厂商 | 错误码 | 处理 |
 |--------|--------|------|
-| 腾讯云 Lighthouse | `InvalidParameter.FirewallRulesExist` | WARN 日志，跳过 |
+| 腾讯云 Lighthouse | `InvalidParameter.FirewallRulesExist` / `InvalidParameter.FirewallRulesDuplicated` | WARN 日志，跳过 |
+| 腾讯云 CVM | `UnsupportedOperation.DuplicatePolicy` | WARN 日志，跳过 |
 | 阿里云 SWAS | `FirewallRuleAlreadyExist` | WARN 日志，跳过 |
 | 阿里云 ECS | 调用成功但不重复添加 | 无需处理 |
 
@@ -2337,7 +2370,7 @@ func rateLimitInterval(cloudType CloudType) time.Duration {
 - **Port 字段约束：** 仅当 Protocol 为 TCP/UDP 时设置 Port；ICMP/ICMPV6/GRE/ALL 协议时 Port 必须省略（不传），否则 API 报错
 - **IPv6+ICMP：** Ipv6CidrBlock 与 ICMP 互斥，需使用 ICMPV6 协议（SDK 自动处理大小写）
 - 本工具只操作 **Ingress**（入站）规则，不触碰 Egress
-- 删除支持两种方式：指定 `PolicyIndex` 或规则匹配（Action + Protocol + CidrBlock + Port）
+- 删除方式：本工具使用 `PolicyIndex` 逐条删除（降序），捕获 ResourceNotFound 视为成功
 - 规则描述：`PolicyDescription`
 - 一次请求只能创建/删除单个方向的规则（Ingress 或 Egress）
 - 创建频率限制 50次/秒，查询/删除 100次/秒
@@ -2350,6 +2383,7 @@ func rateLimitInterval(cloudType CloudType) time.Duration {
 - 规则标识：`Remark`
 - 协议字段名：`RuleProtocol`（取值：TCP / UDP / TCP+UDP / ICMP）
 - 删除接口需要 `RuleIds`（规则 ID 列表），需先通过 ListFirewallRules 获取 RuleId
+- **DROP 规则不支持：** CreateFirewallRules API 无 Policy 字段，规则均为 accept。Action=DROP 时 WARN 并跳过
 - 频率限制严格：100次/60秒，实际间隔 5秒/次（极度保守）
 - 仅支持 IPv4（`SourceCidrIp`），不支持 IPv6
 
