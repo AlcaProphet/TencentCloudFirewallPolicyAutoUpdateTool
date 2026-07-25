@@ -25,7 +25,7 @@ type TCLighthouse struct {
 func newTCLighthouse(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
 	// 从环境变量获取凭据（由 app 层传入 Config，此处通过 pool key 隐含）
 	// 实际凭据通过 ClientPool 共享
-	key := string(config.CloudTCLighthouse) + "|" + cfg.Region
+	key := string(config.CloudTCLighthouse) + "|" + cfg.Region + "|" + getTCAccessID()
 
 	client, err := pool.GetOrCreate(key, func() (any, error) {
 		// 凭据从全局配置获取（由 app 层在创建 Provider 前设置）

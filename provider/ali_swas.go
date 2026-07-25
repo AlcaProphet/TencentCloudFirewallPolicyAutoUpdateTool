@@ -25,7 +25,7 @@ type AliSWAS struct {
 }
 
 func newAliSWAS(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
-	key := string(config.CloudAliSWAS) + "|" + cfg.Region
+	key := string(config.CloudAliSWAS) + "|" + cfg.Region + "|" + getAliAccessID()
 
 	client, err := pool.GetOrCreate(key, func() (any, error) {
 		config := &openapi.Config{

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider } from 'naive-ui'
 import { useRouter } from 'vue-router'
-import { h, ref } from 'vue'
+import { ref } from 'vue'
 
 const router = useRouter()
 const activeKey = ref('/')

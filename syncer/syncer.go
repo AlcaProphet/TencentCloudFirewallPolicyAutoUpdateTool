@@ -11,6 +11,7 @@ import (
 
 	"github.com/alcaprophet/fwalizer/config"
 	"github.com/alcaprophet/fwalizer/dns"
+	"github.com/alcaprophet/fwalizer/notifier"
 	"github.com/alcaprophet/fwalizer/provider"
 )
 
@@ -19,6 +20,8 @@ type Syncer struct {
 	cfg       *config.Config
 	providers []provider.Provider
 	resolver  *dns.Resolver
+	cb        *dns.CircuitBreaker
+	bus       *notifier.EventBus
 	configCh  chan *config.Config
 	stopCh    chan struct{}
 	doneCh    chan struct{} // Run 退出时关闭，用于等待当前轮次完成
@@ -30,10 +33,17 @@ func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolv
 		cfg:       cfg,
 		providers: providers,
 		resolver:  resolver,
+		cb:        dns.NewCircuitBreaker(cfg.DNSFailThreshold),
+		bus:       notifier.NewEventBus(),
 		configCh:  make(chan *config.Config, 1),
 		stopCh:    make(chan struct{}),
 		doneCh:    make(chan struct{}),
 	}
+}
+
+// EventBus 返回事件总线（供外部订阅）
+func (s *Syncer) EventBus() *notifier.EventBus {
+	return s.bus
 }
 
 // Run 启动同步主循环（阻塞，直到收到停止信号）
@@ -98,16 +108,33 @@ func (s *Syncer) syncAll() {
 
 // syncDomain 同步单个域名到单个 Provider
 func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
+	// 0. 熔断检查：已熔断的域名跳过（半开状态仍尝试一次探测）
+	if s.cb.IsOpen(rule.Host) {
+		slog.Debug("域名已熔断，半开探测", "domain", rule.Host)
+	}
+
 	// 1. DNS 解析（失败则保留现有规则，不删除）
 	resolved, err := s.resolver.Resolve(context.Background(), rule.Host)
 	if err != nil {
+		s.cb.RecordFailure(rule.Host)
 		slog.Warn("DNS 解析失败，保留现有规则", "domain", rule.Host, "error", err)
+		s.bus.Publish(notifier.Event{
+			Type:      notifier.EventDNSFailed,
+			Timestamp: time.Now(),
+			Data:      map[string]any{"domain": rule.Host, "error": err.Error()},
+		})
 		return
 	}
+	s.cb.RecordSuccess(rule.Host)
 
 	// 2. 带重试的完整同步流程（Describe → Diff → Create/Delete）
 	if err := s.retrySync(p, rule, resolved); err != nil {
 		slog.Error("同步失败", "provider", p.Name(), "domain", rule.Host, "error", err)
+		s.bus.Publish(notifier.Event{
+			Type:      notifier.EventSyncError,
+			Timestamp: time.Now(),
+			Data:      map[string]any{"provider": p.Name(), "domain": rule.Host, "error": err.Error()},
+		})
 		return
 	}
 

@@ -14,7 +14,7 @@ import (
 // Run 应用主入口
 func Run(cfg *config.Config, mode Mode) error {
 	// 1. 初始化日志
-	initLogger(cfg.LogLevel)
+	InitLogger(cfg.LogLevel)
 
 	// 2. 校验配置
 	if err := cfg.Validate(); err != nil {
@@ -49,7 +49,8 @@ func Run(cfg *config.Config, mode Mode) error {
 	return nil
 }
 
-func initLogger(level string) {
+// InitLogger 初始化日志系统
+func InitLogger(level string) {
 	var lvl slog.Level
 	switch level {
 	case "debug":

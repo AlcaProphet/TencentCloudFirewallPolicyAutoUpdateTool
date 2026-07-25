@@ -12,9 +12,10 @@ import (
 
 // Server WebUI HTTP 服务器
 type Server struct {
-	store  *config.Store
-	port   int
-	mux    *http.ServeMux
+	store      *config.Store
+	port       int
+	mux        *http.ServeMux
+	reloadFunc func() // 配置变更后通知 Syncer 重载
 }
 
 // NewServer 创建 WebUI 服务器
@@ -26,6 +27,18 @@ func NewServer(store *config.Store, port int) *Server {
 	}
 	s.registerRoutes()
 	return s
+}
+
+// SetReloadFunc 设置配置重载回调（WebUI 修改配置后通知 Syncer）
+func (s *Server) SetReloadFunc(fn func()) {
+	s.reloadFunc = fn
+}
+
+// notifyReload 触发配置重载
+func (s *Server) notifyReload() {
+	if s.reloadFunc != nil {
+		s.reloadFunc()
+	}
 }
 
 // Start 启动 HTTP 服务器（阻塞）
@@ -81,6 +94,7 @@ func (s *Server) handleAddTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.notifyReload()
 	writeJSON(w, http.StatusCreated, map[string]string{"message": "添加成功"})
 }
 
@@ -92,6 +106,7 @@ func (s *Server) handleDeleteTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.notifyReload()
 	writeJSON(w, http.StatusOK, map[string]string{"message": "删除成功"})
 }
 
@@ -114,6 +129,7 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.notifyReload()
 	writeJSON(w, http.StatusCreated, map[string]string{"message": "添加成功"})
 }
 
@@ -125,6 +141,7 @@ func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.notifyReload()
 	writeJSON(w, http.StatusOK, map[string]string{"message": "删除成功"})
 }
 
@@ -149,6 +166,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.notifyReload()
 	writeJSON(w, http.StatusOK, map[string]string{"message": "保存成功"})
 }
 

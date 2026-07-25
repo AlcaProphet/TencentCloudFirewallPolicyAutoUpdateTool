@@ -26,7 +26,7 @@ type TCCVM struct {
 }
 
 func newTCCVM(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
-	key := string(config.CloudTCCVM) + "|" + cfg.Region
+	key := string(config.CloudTCCVM) + "|" + cfg.Region + "|" + getTCAccessID()
 
 	client, err := pool.GetOrCreate(key, func() (any, error) {
 		credential := common.NewCredential(

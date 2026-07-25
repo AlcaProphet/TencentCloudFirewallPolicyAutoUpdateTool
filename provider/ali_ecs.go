@@ -24,7 +24,7 @@ type AliECS struct {
 }
 
 func newAliECS(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
-	key := string(config.CloudAliECS) + "|" + cfg.Region
+	key := string(config.CloudAliECS) + "|" + cfg.Region + "|" + getAliAccessID()
 
 	client, err := pool.GetOrCreate(key, func() (any, error) {
 		config := &openapi.Config{
