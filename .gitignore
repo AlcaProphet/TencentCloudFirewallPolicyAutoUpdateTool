@@ -4,8 +4,10 @@
 # ─── 编译产物 ───
 fwalizer
 fwalizer.exe
-/build/
 /dist/
+node_modules/
+webui/frontend/dist/
+
 
 # ─── IDE ───
 .idea/

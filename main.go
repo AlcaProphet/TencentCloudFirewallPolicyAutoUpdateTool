@@ -1,45 +1,84 @@
 package main
 
 import (
-	"log/slog"
+	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+	"path/filepath"
 
+	"github.com/alcaprophet/fwalizer/app"
 	"github.com/alcaprophet/fwalizer/config"
-	"github.com/alcaprophet/fwalizer/firewall"
+	"github.com/alcaprophet/fwalizer/webui"
 )
 
 func main() {
-	// 初始化日志：JSON 格式输出到 stdout，供 docker logs 查看
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-
-	// 1. 加载配置
-	cfg, err := config.Load()
-	if err != nil {
-		slog.Error("加载配置失败", "error", err)
-		os.Exit(1)
+	// CLI 子命令优先
+	if app.RunCLI(os.Args) {
+		return
 	}
 
-	slog.Info("FWAlizer 启动", "version", "0.1.0", "instance", cfg.InstanceID, "region", cfg.Region)
+	// 检测模式
+	mode := app.DetectMode(os.Getenv("FWALIZER_MODE"))
 
-	// 2. 初始化同步器
-	syncer, err := firewall.NewSyncer(cfg)
-	if err != nil {
-		slog.Error("初始化同步器失败", "error", err)
-		os.Exit(1)
+	var cfg *config.Config
+
+	switch mode {
+	case app.ModeEnv:
+		// 从 .env 加载
+		var err error
+		cfg, err = config.LoadEnv(".env")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载 .env 失败: %v\n", err)
+			os.Exit(1)
+		}
+	case app.ModeWebUI:
+		// WebUI 模式：SQLite + HTTP Server
+		dataDir := getDataDir()
+		os.MkdirAll(dataDir, 0755)
+		dbPath := filepath.Join(dataDir, "config.db")
+		store, err := config.OpenStore(dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "打开数据库失败: %v\n", err)
+			os.Exit(1)
+		}
+		defer store.Close()
+
+		cfg, err = store.LoadConfig()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
+			os.Exit(1)
+		}
+
+		// 启动 WebUI 服务器
+		srv := webui.NewServer(store, cfg.WebUIPort)
+		go func() {
+			if err := srv.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "WebUI 服务器失败: %v\n", err)
+				os.Exit(1)
+			}
+		}()
+
+		// 如果有目标和规则，启动同步引擎
+		if len(cfg.Targets) > 0 && len(cfg.DomainRules) > 0 {
+			if err := app.Run(cfg, mode); err != nil {
+				fmt.Fprintf(os.Stderr, "运行失败: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			// 无配置时仅运行 WebUI，等待用户配置
+			fmt.Println("WebUI 已启动，请通过浏览器配置")
+			select {} // 阻塞等待
+		}
+		return
 	}
 
-	// 3. 监听退出信号
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	if err := app.Run(cfg, mode); err != nil {
+		fmt.Fprintf(os.Stderr, "运行失败: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	// 4. 启动同步循环
-	go syncer.Run()
-
-	// 5. 等待退出信号
-	sig := <-sigCh
-	slog.Info("收到退出信号，正在优雅关闭...", "signal", sig.String())
-	syncer.Shutdown()
-	slog.Info("FWAlizer 已退出")
+// getDataDir 获取数据存储目录
+func getDataDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "fwalizer")
 }

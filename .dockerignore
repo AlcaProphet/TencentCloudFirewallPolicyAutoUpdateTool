@@ -1,3 +1,7 @@
+Documents/
+*.md
+.env
+.git/
 .env
 .git
 Dockerfile
