@@ -709,10 +709,15 @@ import (
 )
 
 // OwnedRules 筛选本工具管理的规则（描述以 [TAG] 开头）
+// 同时过滤掉 Port 和 CidrBlock 均为空的规则（可能是模板规则，非本工具创建）
 func OwnedRules(allRules []config.RuleInfo, tagStr string) []config.RuleInfo {
     var owned []config.RuleInfo
     for _, r := range allRules {
         if tag.HasPrefix(r.Description, tagStr) {
+            // 跳过模板规则（Port 和 CidrBlock 均为空）
+            if r.Port == "" && r.CidrBlock == "" && r.Ipv6CidrBlock == "" {
+                continue
+            }
             owned = append(owned, r)
         }
     }
@@ -1221,14 +1226,15 @@ import (
     "github.com/alcaprophet/fwalizer/config"
 )
 
-// rateLimitInterval 统一频率控制：所有 API 合计不超过每秒 5 次，且不低于云厂商最低要求
+// rateLimitInterval 频率控制：保留充足余量，确保不易触发限流
 func rateLimitInterval(ct config.CloudType) time.Duration {
-    const base = 200 * time.Millisecond // 全局上限 5次/秒
     switch ct {
     case config.CloudAliSWAS:
-        return 700 * time.Millisecond // SWAS 100次/60秒 ≈ 1.4次/秒，取 700ms 留余量
+        return 5 * time.Second // SWAS 100次/60秒≈1.67/s，取 0.2/s 极度保守
+    case config.CloudTCLighthouse:
+        return 5 * time.Second // Lighthouse 10/s，取 0.2/s 极度保守
     default:
-        return base
+        return 200 * time.Millisecond // CVM 50/s、ECS 无限制，保守取值
     }
 }
 ```
@@ -1466,7 +1472,7 @@ go get github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc
 | 方法 | API | 关键细节 |
 |------|-----|----------|
 | `GetRules()` | `DescribeSecurityGroupPolicies` | 只取 Ingress 部分；映射 PolicyDescription→Description、PolicyIndex |
-| `CreateRules()` | `CreateSecurityGroupPolicies` | 只写 Ingress；每条规则单独一个 Port；检查规则总数≤100 |
+| `CreateRules()` | `CreateSecurityGroupPolicies` | 只写 Ingress；TCP/UDP 每条规则单独一个 Port，ICMP/ALL 不传 Port；检查规则总数≤100 |
 | `DeleteRules()` | `DeleteSecurityGroupPolicies` | 用 PolicyIndex 删除；只删 Ingress |
 | `ConvertPorts()` | 无 | `portconv.Parse(port)` 拆分为多条 |
 
@@ -1515,7 +1521,7 @@ go get github.com/aliyun/credentials-go
 - 仅支持 IPv4，IPv6 解析结果跳过（记录 WARN 日志）
 - ICMP 端口用 `-1/-1`
 - 协议字段名 `RuleProtocol`，取值 TCP/UDP/TCP+UDP/ICMP
-- 频率限制严格（100次/60秒），Syncer 已配置 700ms 间隔
+- 频率限制严格（100次/60秒），Syncer 已配置 5秒/次间隔
 - Endpoint: `swas.{region}.aliyuncs.com`
 
 **验收：**
@@ -2213,11 +2219,11 @@ func (s *Syncer) syncAll() {
 func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
     switch cloudType {
     case CloudAliSWAS:
-        return 800 * time.Millisecond  // 100次/60秒，留余量
+        return 5 * time.Second  // 100次/60秒，极度保守
     case CloudTCLighthouse:
-        return 200 * time.Millisecond  // 10次/秒，留余量
+        return 5 * time.Second  // 10次/秒，极度保守
     default:
-        return 100 * time.Millisecond  // CVM 50次/秒、阿里云 ECS 无限制
+        return 200 * time.Millisecond  // CVM 50次/秒、阿里云 ECS 无限制
     }
 }
 ```
@@ -2295,11 +2301,14 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 - SDK: `tencentcloud-sdk-go/tencentcloud/vpc/v20170312`
 - 操作对象是 `SecurityGroupId`（非 InstanceId）
 - 端口格式：仅支持单端口（`80`）或范围（`8000-8010`），**不支持逗号分隔**，需在 ConvertPorts 中拆分为多条规则
+- **Port 字段约束：** 仅当 Protocol 为 TCP/UDP 时设置 Port；ICMP/ICMPV6/GRE/ALL 协议时 Port 必须省略（不传），否则 API 报错
+- **IPv6+ICMP：** Ipv6CidrBlock 与 ICMP 互斥，需使用 ICMPV6 协议（SDK 自动处理大小写）
 - 本工具只操作 **Ingress**（入站）规则，不触碰 Egress
 - 删除支持两种方式：指定 `PolicyIndex` 或规则匹配（Action + Protocol + CidrBlock + Port）
 - 规则描述：`PolicyDescription`
 - 一次请求只能创建/删除单个方向的规则（Ingress 或 Egress）
 - 创建频率限制 50次/秒，查询/删除 100次/秒
+- 规则总数上限 100 条（入站+出站合计），可用 PolicyStatistics 精确计数
 
 ### 6.3 阿里云轻量云 (SWAS-OPEN)
 
@@ -2308,7 +2317,7 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 - 规则标识：`Remark`
 - 协议字段名：`RuleProtocol`（取值：TCP / UDP / TCP+UDP / ICMP）
 - 删除接口需要 `RuleIds`（规则 ID 列表），需先通过 ListFirewallRules 获取 RuleId
-- 频率限制严格：100次/60秒，建议 800ms 间隔
+- 频率限制严格：100次/60秒，实际间隔 5秒/次（极度保守）
 - 仅支持 IPv4（`SourceCidrIp`），不支持 IPv6
 
 ### 6.4 阿里云 ECS 安全组
