@@ -4,6 +4,293 @@
 
 ---
 
+## 构建进度追踪
+
+| Step | 内容 | 状态 |
+|------|------|------|
+| 1 | 项目骨架 + 基础工具 | ☐ 未开始 |
+| 2 | .env 解析器 + 配置校验 | ☐ 未开始 |
+| 3 | DNS 解析器 | ☐ 未开始 |
+| 4 | Provider 抽象层 | ☐ 未开始 |
+| 5 | 腾讯云 Lighthouse Provider | ☐ 未开始 |
+| 6 | Syncer 同步引擎 | ☐ 未开始 |
+| 7 | App 生命周期 + CLI + main.go | ☐ 未开始 |
+| 8 | 腾讯云 CVM Provider | ☐ 未开始 |
+| 9 | 阿里云 SWAS Provider | ☐ 未开始 |
+| 10 | 阿里云 ECS Provider | ☐ 未开始 |
+| 11 | DNS 熔断 + 同步日志 | ☐ 未开始 |
+| 12 | Docker 构建 + Makefile | ☐ 未开始 |
+| 13 | WebUI 后端 | ☐ 未开始 |
+| 14 | WebUI 前端 | ☐ 未开始 |
+| 15 | 告警 + 高级功能 | ☐ 未开始 |
+| 16 | 桌面端 | ☐ 未开始 |
+
+> 状态标记：☐ 未开始 / ◧ 进行中 / ☑ 已完成
+
+---
+
+## 分步构建计划
+
+> 原则：每一步完成后均可编译、可测试。不跳步，不并行多步。
+
+### Step 1：项目骨架 + 基础工具
+
+**目标：** 建立新目录结构，完成无外部依赖的基础模块。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 初始化 go.mod | `go.mod` | 模块路径 `github.com/alcaprophet/fwalizer`，Go 1.25 |
+| 版本号包 | `version/version.go` | `var Version = "dev"` |
+| 端口转换 | `internal/portconv/portconv.go` | 解析统一格式 → 输出各云格式列表 |
+| 标签工具 | `internal/tag/tag.go` | 生成 `[TAG] comment`、解析前缀 |
+| 数据模型 | `config/config.go` | CloudType、RuleInfo、RuleAction、TargetConfig、Config、DomainRule |
+
+**验收：** `go build ./...` 编译通过；`internal/portconv` 和 `internal/tag` 有单元测试。
+
+---
+
+### Step 2：.env 解析器 + 配置校验
+
+**目标：** 能正确解析新格式 .env 并校验有效性。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 反斜杠续行合并 | `config/env.go` | `\` 续行 → 单行 |
+| TARGETS 解析 | `config/env.go` | 按 `,` 拆条目 → 按 `\|` 拆字段 |
+| RULES 解析 | `config/env.go` | 同上，额外处理 targets 编号、ICMP 端口强制 ALL |
+| 配置校验 | `config/validate.go` | 凭据非空、编号越界、协议合法性、端口格式 |
+| 默认值填充 | `config/env.go` | DNSTimeout=10s、DNSFailThreshold=5、WebUIPort=9090、LogLevel=info |
+
+**验收：** `config/` 有单元测试，覆盖正常解析、续行、错误格式、边界值。
+
+---
+
+### Step 3：DNS 解析器
+
+**目标：** 支持自定义 DNS + A/AAAA 解析 + 超时控制。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 基本解析 | `dns/resolver.go` | `net.Resolver` + 自定义 Dial、A + AAAA |
+| 超时控制 | `dns/resolver.go` | `context.WithTimeout`，读取 Config.DNSTimeout |
+| 结果模型 | `dns/resolver.go` | `ResolvedIP{IP, IsIPv6}` |
+| 单元测试 | `dns/resolver_test.go` | 正常解析、超时、域名不存在 |
+
+**验收：** `go test ./dns/` 通过。
+
+---
+
+### Step 4：Provider 抽象层
+
+**目标：** 定义接口、工厂、通用 Diff 逻辑。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 接口定义 | `provider/provider.go` | Provider 接口（见第三节） |
+| 工厂注册 | `provider/registry.go` | Register + NewProvider |
+| OwnedRules | `provider/common.go` | 按 `[TAG]` 前缀筛选 |
+| Diff 算法 | `provider/common.go` | 比较期望 vs 现有 → toAdd/toDelete |
+| ClientPool | `provider/common.go` | key=cloudType\|region\|accessID，复用 SDK Client |
+
+**验收：** `provider/common.go` 有 Diff 单元测试（模拟数据）。
+
+---
+
+### Step 5：腾讯云 Lighthouse Provider
+
+**目标：** 第一个完整可用的 Provider。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 添加 SDK 依赖 | `go.mod` | tencentcloud-sdk-go lighthouse |
+| 实现 GetRules | `provider/tc_lighthouse.go` | DescribeFirewallRules → []RuleInfo |
+| 实现 CreateRules | `provider/tc_lighthouse.go` | CreateFirewallRules，IPv6 分两条 |
+| 实现 DeleteRules | `provider/tc_lighthouse.go` | DeleteFirewallRules，幂等处理 |
+| 实现 ConvertPorts | `provider/tc_lighthouse.go` | 保持原样 `["80,443"]` |
+| init() 自注册 | `provider/tc_lighthouse.go` | Register(CloudTCLighthouse, factory) |
+
+**验收：** 编译通过；可配合真实凭据手动测试 GetRules。
+
+---
+
+### Step 6：Syncer 同步引擎
+
+**目标：** 完成同步主循环，能端到端跑通单 Provider。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 同步主循环 | `syncer/syncer.go` | Ticker + syncAll + syncDomain |
+| 重试逻辑 | `syncer/retry.go` | 3 次指数退避，区分幂等错误 vs 真正错误 |
+| 频率控制 | `syncer/ratelimit.go` | 按 CloudType 返回间隔 |
+| 优雅退出 | `syncer/syncer.go` | SIGTERM/SIGINT → 完成当前轮次 |
+| 配置热重载 | `syncer/syncer.go` | configCh 接收新 Config |
+
+**验收：** `.env` 模式 + Lighthouse Provider 可端到端同步（真实或 mock）。
+
+---
+
+### Step 7：App 生命周期 + CLI + main.go
+
+**目标：** 可执行的完整二进制（.env 模式）。
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 模式检测 | `app/mode.go` | TARGETS 存在 → env；否则 webui |
+| App 协调 | `app/app.go` | 初始化 Config → Provider → Syncer → 启动 |
+| CLI 子命令 | `app/cli.go` | version / validate |
+| 入口 | `main.go` | 解析 os.Args → 分发 |
+| 日志初始化 | `main.go` | slog + LogLevel |
+
+**验收：** `go build . && ./fwalizer version` 输出版本；`./fwalizer validate` 校验 .env。
+
+---
+
+### Step 8：腾讯云 CVM Provider
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 添加 SDK 依赖 | `go.mod` | tencentcloud-sdk-go vpc |
+| 实现全部接口 | `provider/tc_cvm.go` | Ingress only、PolicyIndex 删除、100条上限检查 |
+| ConvertPorts | `provider/tc_cvm.go` | 拆分逗号 → 多条 |
+
+**验收：** 编译通过；双 Provider 同步测试。
+
+---
+
+### Step 9：阿里云 SWAS Provider
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 添加 SDK 依赖 | `go.mod` | swas-open-20200601/v3 + darabonba-openapi/v2 |
+| 实现全部接口 | `provider/ali_swas.go` | RuleIds 删除、仅 IPv4、800ms 间隔 |
+| ConvertPorts | `provider/ali_swas.go` | 斜杠格式 |
+
+**验收：** 编译通过；三 Provider 同步测试。
+
+---
+
+### Step 10：阿里云 ECS Provider
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 添加 SDK 依赖 | `go.mod` | ecs-20140526/v7 |
+| 实现全部接口 | `provider/ali_ecs.go` | SecurityGroupRuleId 删除、IPv6、Priority |
+| ConvertPorts | `provider/ali_ecs.go` | 斜杠格式 |
+
+**验收：** 四 Provider 全部编译通过；`go vet ./...` 无警告。
+
+---
+
+### Step 11：DNS 熔断 + 同步日志
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 渐进式熔断 | `dns/resolver.go` | 失败计数、半开探测、解除 |
+| EventBus 基础 | `notifier/bus.go` | 异步投递、Subscriber 接口 |
+| 同步日志记录 | `syncer/syncer.go` | 每轮结果发送 EventBus 事件 |
+
+**验收：** 模拟 DNS 失败 → 观察熔断日志。
+
+---
+
+### Step 12：Docker 构建 + Makefile
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| Dockerfile | `build/Dockerfile` | 多阶段构建、alpine:3.20、非 root、HEALTHCHECK |
+| Makefile 更新 | `Makefile` | build 加 ldflags、docker-build 指向 build/Dockerfile |
+| .dockerignore | `.dockerignore` | 排除 Documents/、*.md、.env |
+| CI/CD | `.github/workflows/docker-publish.yml` | tag 触发、ghcr.io 推送 |
+
+**验收：** `make docker-build` 成功；容器启动正常。
+
+---
+
+### Step 13：WebUI 后端（Phase 2）
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| SQLite Store | `config/store.go` | WAL、busy_timeout、表结构初始化 |
+| HTTP Server | `webui/server.go` | net/http、路由、/api/health |
+| Targets API | `webui/api/targets.go` | CRUD + test-connection |
+| Rules API | `webui/api/rules.go` | CRUD |
+| Sync API | `webui/api/sync.go` | status + dryrun + 手动触发 |
+| Settings API | `webui/api/settings.go` | 全局设置 + 热重载 |
+| 配置导入导出 | `webui/api/settings.go` | JSON 格式 |
+| 进程锁 | `app/app.go` | pidfile 防多实例 |
+
+**验收：** WebUI 模式下 API 可访问；配置修改后 Syncer 热重载。
+
+---
+
+### Step 14：WebUI 前端（Phase 2）
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| Vue 3 SPA | `webui/frontend/` | CDN 引入，无构建工具 |
+| embed 嵌入 | `webui/server.go` | `//go:embed frontend/dist` |
+| 页面实现 | 仪表盘 / 云资源 / 规则 / 设置 / 日志 | 见 Design1.md 第七节 |
+
+**验收：** 浏览器访问 localhost:9090 可操作全部功能。
+
+---
+
+### Step 15：告警 + 高级功能（Phase 3）
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 邮件告警 | `notifier/email.go` | SMTP |
+| Webhook | `notifier/webhook.go` | 钉钉/飞书/Slack |
+| Dry Run 完善 | `webui/api/sync.go` | 返回 toAdd/toDelete JSON |
+| CLI backup/restore | `app/cli.go` | SQLite 备份/恢复 |
+
+**验收：** 同步失败时收到告警通知。
+
+---
+
+### Step 16：桌面端（Phase 4）
+
+| 任务 | 文件 | 要点 |
+|------|------|------|
+| 系统托盘 | `app/systray.go` | `//go:build desktop`、菜单、状态图标 |
+| 开机自启 | `app/systray.go` | Windows 注册表 / macOS plist |
+| 自动打开浏览器 | `app/app.go` | 启动后 `open`/`xdg-open` |
+
+**验收：** `CGO_ENABLED=1 go build -tags desktop` 编译通过；托盘可用。
+
+---
+
+### 构建顺序依赖图
+
+```
+Step 1 (骨架)
+  └─ Step 2 (.env)
+       └─ Step 3 (DNS)
+            └─ Step 4 (Provider 抽象)
+                 └─ Step 5 (Lighthouse)
+                      └─ Step 6 (Syncer)
+                           └─ Step 7 (App + main)  ← MVP
+                                ├─ Step 8 (CVM)
+                                ├─ Step 9 (SWAS)
+                                ├─ Step 10 (ECS)
+                                └─ Step 11 (熔断 + EventBus)
+                                     └─ Step 12 (Docker)
+                                          ├─ Step 13 (WebUI 后端)
+                                          │    └─ Step 14 (WebUI 前端)
+                                          ├─ Step 15 (告警)
+                                          └─ Step 16 (桌面端)
+```
+
+**关键约束：**
+- Step 1–7 为最小可用版本（MVP），仅支持 Lighthouse + .env 模式
+- Step 8–10 可任意顺序，但每个完成后必须全量编译 + `go vet`
+- Step 13–16 属于后续 Phase，可根据优先级调整顺序
+- 每个 Step 完成后必须：`go build ./... && go vet ./... && go test ./...`
+
+---
+
+# 技术实现细节
+
 ## 一、重构后目录结构
 
 ```
