@@ -39,3 +39,32 @@ func TestCircuitBreaker_Reset(t *testing.T) {
 		t.Error("成功后应解除熔断")
 	}
 }
+
+func TestCircuitBreaker_HalfOpenNoIncrement(t *testing.T) {
+	cb := NewCircuitBreaker(3)
+
+	// 触发熔断
+	cb.RecordFailure("example.com")
+	cb.RecordFailure("example.com")
+	cb.RecordFailure("example.com")
+	if !cb.IsOpen("example.com") {
+		t.Error("应已熔断")
+	}
+
+	// 半开探测失败：计数器不应继续增长
+	cb.RecordFailure("example.com")
+	cb.RecordFailure("example.com")
+
+	cb.mu.Lock()
+	count := cb.failCount["example.com"]
+	cb.mu.Unlock()
+
+	if count != 3 {
+		t.Errorf("熔断后计数应保持为 3，实际为 %d", count)
+	}
+
+	// 仍然处于熔断状态
+	if !cb.IsOpen("example.com") {
+		t.Error("半开探测失败后应维持熔断")
+	}
+}

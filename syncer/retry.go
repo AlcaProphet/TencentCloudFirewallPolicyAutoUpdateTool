@@ -116,6 +116,7 @@ func isIdempotentDelete(err error) bool {
 }
 
 // truncateDesc 按云厂商描述字段长度限制截断（保证 [TAG] 前缀完整）
+// 使用 rune 切片避免截断 UTF-8 多字节字符（如中文）
 func truncateDesc(desc string, ct config.CloudType) string {
 	maxLen := 0
 	switch ct {
@@ -124,8 +125,9 @@ func truncateDesc(desc string, ct config.CloudType) string {
 	default:
 		return desc // 其他云厂商限制宽松，无需截断
 	}
-	if len(desc) <= maxLen {
+	runes := []rune(desc)
+	if len(runes) <= maxLen {
 		return desc
 	}
-	return desc[:maxLen]
+	return string(runes[:maxLen])
 }

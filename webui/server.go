@@ -101,7 +101,10 @@ func (s *Server) handleAddTarget(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteTarget(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var n int
-	fmt.Sscanf(id, "%d", &n)
+	if _, err := fmt.Sscanf(id, "%d", &n); err != nil {
+		writeError(w, http.StatusBadRequest, "无效的资源 ID")
+		return
+	}
 	if err := s.store.DeleteTarget(n); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -136,7 +139,10 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var n int
-	fmt.Sscanf(id, "%d", &n)
+	if _, err := fmt.Sscanf(id, "%d", &n); err != nil {
+		writeError(w, http.StatusBadRequest, "无效的资源 ID")
+		return
+	}
 	if err := s.store.DeleteRule(n); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -3,6 +3,7 @@ module github.com/alcaprophet/fwalizer
 go 1.25.0
 
 require (
+	fyne.io/systray v1.12.2
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
 	github.com/alibabacloud-go/ecs-20140526/v7 v7.9.2
 	github.com/alibabacloud-go/swas-open-20200601/v3 v3.0.0
@@ -20,6 +21,7 @@ require (
 	github.com/aliyun/credentials-go v1.4.12 // indirect
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

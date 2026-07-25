@@ -109,7 +109,7 @@ func (p *TCLighthouse) CreateRules(rules []config.RuleAction) error {
 	for _, r := range rules {
 		fwRule := &lighthouse.FirewallRule{
 			Action:                  common.StringPtr(r.Action),
-			FirewallRuleDescription: common.StringPtr(truncateLighthouseDesc(r.Description)),
+			FirewallRuleDescription: common.StringPtr(r.Description), // 已由 Syncer 层 truncateDesc 截断
 		}
 
 		// 协议处理：IPv6 + ICMP 需用 ICMPv6
@@ -221,14 +221,6 @@ func (p *TCLighthouse) ConvertPorts(port string) []string {
 		result = append(result, current)
 	}
 	return result
-}
-
-// truncateLighthouseDesc 截断描述至 64 字符（保证 [TAG] 前缀完整）
-func truncateLighthouseDesc(desc string) string {
-	if len(desc) <= 64 {
-		return desc
-	}
-	return desc[:64]
 }
 
 // strVal 安全获取字符串指针值

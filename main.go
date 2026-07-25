@@ -37,7 +37,10 @@ func main() {
 	case app.ModeWebUI:
 		// WebUI 模式：SQLite + HTTP Server + Syncer
 		dataDir := getDataDir()
-		os.MkdirAll(dataDir, 0755)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "创建数据目录失败: %v\n", err)
+			os.Exit(1)
+		}
 		dbPath := filepath.Join(dataDir, "config.db")
 		store, err := config.OpenStore(dbPath)
 		if err != nil {
@@ -106,6 +109,10 @@ func main() {
 
 // getDataDir 获取数据存储目录
 func getDataDir() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "无法获取用户目录: %v\n", err)
+		os.Exit(1)
+	}
 	return filepath.Join(home, ".config", "fwalizer")
 }

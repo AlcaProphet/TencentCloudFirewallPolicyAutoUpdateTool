@@ -37,13 +37,16 @@ func (cb *CircuitBreaker) RecordSuccess(domain string) {
 	cb.failCount[domain] = 0
 }
 
-// RecordFailure 记录失败
+// RecordFailure 记录失败（已熔断时不再递增，半开探测失败维持熔断状态）
 func (cb *CircuitBreaker) RecordFailure(domain string) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
+	// 已熔断时跳过递增（符合 Build1.md 12.7 节约定）
+	if cb.failCount[domain] >= cb.threshold {
+		return
+	}
 	cb.failCount[domain]++
-	count := cb.failCount[domain]
-	if count == cb.threshold {
-		slog.Error("DNS 熔断触发", "domain", domain, "连续失败", count)
+	if cb.failCount[domain] == cb.threshold {
+		slog.Error("DNS 熔断触发", "domain", domain, "连续失败", cb.failCount[domain])
 	}
 }

@@ -215,8 +215,15 @@ func (p *TCCVM) checkRuleLimit(toAdd int) error {
 		return nil
 	}
 
-	// 计算总规则数（入站 + 出站）
-	total := len(ps.Ingress) + len(ps.Egress)
+	// 计算总规则数（优先使用 PolicyStatistics 精确计数，fallback 到手动计数）
+	var total int
+	if ps.PolicyStatistics != nil {
+		stats := ps.PolicyStatistics
+		total = int(uint64Val(stats.IngressIPv4TotalCount) + uint64Val(stats.IngressIPv6TotalCount) +
+			uint64Val(stats.EgressIPv4TotalCount) + uint64Val(stats.EgressIPv6TotalCount))
+	} else {
+		total = len(ps.Ingress) + len(ps.Egress)
+	}
 	if total+toAdd > 100 {
 		return fmt.Errorf("安全组规则总数将达 %d（上限 100），停止新增", total+toAdd)
 	}
@@ -224,4 +231,12 @@ func (p *TCCVM) checkRuleLimit(toAdd int) error {
 		slog.Warn("安全组规则接近上限", "当前", total, "新增", toAdd, "上限", 100)
 	}
 	return nil
+}
+
+// uint64Val 安全获取 uint64 指针值
+func uint64Val(p *uint64) uint64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
