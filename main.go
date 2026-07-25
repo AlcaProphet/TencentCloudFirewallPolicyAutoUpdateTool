@@ -77,6 +77,9 @@ func main() {
 			resolver := dns.NewResolver(cfg.DNS, cfg.DNSTimeout)
 			s := syncer.New(cfg, providers, resolver)
 
+			// 将 Syncer 和 EventBus 传入 WebUI（支持 status/trigger/dryrun/SSE）
+			srv.SetSyncer(s, s.EventBus())
+
 			// 接通热重载：WebUI 修改配置后重新加载并通知 Syncer
 			srv.SetReloadFunc(func() {
 				newCfg, err := store.LoadConfig()

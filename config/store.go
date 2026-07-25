@@ -200,6 +200,51 @@ func (s *Store) DeleteRule(id int) error {
 	return err
 }
 
+// UpdateTarget 更新目标
+func (s *Store) UpdateTarget(id int, t TargetConfig) error {
+	_, err := s.db.Exec(
+		"UPDATE targets SET cloud_type = ?, region = ?, resource_id = ? WHERE id = ?",
+		string(t.CloudType), t.Region, t.ResourceID, id,
+	)
+	return err
+}
+
+// UpdateRule 更新域名规则
+func (s *Store) UpdateRule(id int, r DomainRule) error {
+	targetsJSON, _ := json.Marshal(r.Targets)
+	_, err := s.db.Exec(
+		"UPDATE rules SET host = ?, protocol = ?, ports = ?, action = ?, targets = ?, comment = ? WHERE id = ?",
+		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, id,
+	)
+	return err
+}
+
+// ClearAll 清空所有配置（用于配置导入前重置）
+func (s *Store) ClearAll() error {
+	_, err := s.db.Exec("DELETE FROM targets; DELETE FROM rules; DELETE FROM settings;")
+	return err
+}
+
+// BatchAddTargets 批量添加目标
+func (s *Store) BatchAddTargets(targets []TargetConfig) error {
+	for _, t := range targets {
+		if err := s.AddTarget(t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// BatchAddRules 批量添加规则
+func (s *Store) BatchAddRules(rules []DomainRule) error {
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // AddSyncLog 添加同步日志
 func (s *Store) AddSyncLog(log SyncLog) error {
 	_, err := s.db.Exec(

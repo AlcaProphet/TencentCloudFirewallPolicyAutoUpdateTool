@@ -19,9 +19,9 @@ const (
 
 // Event 事件
 type Event struct {
-	Type      EventType
-	Timestamp time.Time
-	Data      map[string]any
+	Type      EventType      `json:"type"`
+	Timestamp time.Time      `json:"timestamp"`
+	Data      map[string]any `json:"data"`
 }
 
 // Subscriber 事件订阅者接口
@@ -33,24 +33,52 @@ type Subscriber interface {
 type EventBus struct {
 	mu          sync.RWMutex
 	subscribers map[EventType][]Subscriber
+	chanSubs    map[int]chan Event // channel 订阅者（用于 SSE）
+	nextID      int
 }
 
 // NewEventBus 创建事件总线
 func NewEventBus() *EventBus {
-	return &EventBus{subscribers: make(map[EventType][]Subscriber)}
+	return &EventBus{
+		subscribers: make(map[EventType][]Subscriber),
+		chanSubs:    make(map[int]chan Event),
+	}
 }
 
-// Subscribe 订阅事件
+// Subscribe 订阅事件（接口方式）
 func (b *EventBus) Subscribe(eventType EventType, sub Subscriber) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.subscribers[eventType] = append(b.subscribers[eventType], sub)
 }
 
+// SubscribeChan 订阅所有事件（channel 方式，用于 SSE 推送）
+// 返回事件 channel 和取消订阅函数
+func (b *EventBus) SubscribeChan() (<-chan Event, func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	id := b.nextID
+	b.nextID++
+	ch := make(chan Event, 32)
+	b.chanSubs[id] = ch
+	return ch, func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if c, ok := b.chanSubs[id]; ok {
+			close(c)
+			delete(b.chanSubs, id)
+		}
+	}
+}
+
 // Publish 异步投递，不阻塞调用方
 func (b *EventBus) Publish(event Event) {
 	b.mu.RLock()
 	subs := b.subscribers[event.Type]
+	chanSubs := make([]chan Event, 0, len(b.chanSubs))
+	for _, ch := range b.chanSubs {
+		chanSubs = append(chanSubs, ch)
+	}
 	b.mu.RUnlock()
 
 	for _, sub := range subs {
@@ -59,5 +87,12 @@ func (b *EventBus) Publish(event Event) {
 				slog.Warn("事件处理失败", "type", event.Type, "error", err)
 			}
 		}(sub)
+	}
+	// channel 订阅者：非阻塞发送，满则跳过
+	for _, ch := range chanSubs {
+		select {
+		case ch <- event:
+		default:
+		}
 	}
 }

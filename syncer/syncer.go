@@ -11,6 +11,7 @@ import (
 
 	"github.com/alcaprophet/fwalizer/config"
 	"github.com/alcaprophet/fwalizer/dns"
+	"github.com/alcaprophet/fwalizer/internal/tag"
 	"github.com/alcaprophet/fwalizer/notifier"
 	"github.com/alcaprophet/fwalizer/provider"
 )
@@ -23,8 +24,14 @@ type Syncer struct {
 	cb        *dns.CircuitBreaker
 	bus       *notifier.EventBus
 	configCh  chan *config.Config
+	triggerCh chan struct{} // 手动触发同步
 	stopCh    chan struct{}
 	doneCh    chan struct{} // Run 退出时关闭，用于等待当前轮次完成
+
+	// 状态追踪（保护以下字段）
+	mu       sync.RWMutex
+	running  bool
+	lastSync time.Time
 }
 
 // New 创建同步引擎
@@ -36,6 +43,7 @@ func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolv
 		cb:        dns.NewCircuitBreaker(cfg.DNSFailThreshold),
 		bus:       notifier.NewEventBus(),
 		configCh:  make(chan *config.Config, 1),
+		triggerCh: make(chan struct{}, 1),
 		stopCh:    make(chan struct{}),
 		doneCh:    make(chan struct{}),
 	}
@@ -49,6 +57,9 @@ func (s *Syncer) EventBus() *notifier.EventBus {
 // Run 启动同步主循环（阻塞，直到收到停止信号）
 func (s *Syncer) Run() {
 	defer close(s.doneCh)
+	s.setRunning(true)
+	defer s.setRunning(false)
+
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
 
@@ -58,6 +69,9 @@ func (s *Syncer) Run() {
 	for {
 		select {
 		case <-ticker.C:
+			s.syncAll()
+		case <-s.triggerCh:
+			slog.Info("手动触发同步")
 			s.syncAll()
 		case newCfg := <-s.configCh:
 			slog.Info("配置热重载")
@@ -78,6 +92,80 @@ func (s *Syncer) Stop() {
 // Reload 热重载配置
 func (s *Syncer) Reload(cfg *config.Config) {
 	s.configCh <- cfg
+}
+
+// TriggerSync 手动触发一次同步（非阻塞）
+func (s *Syncer) TriggerSync() {
+	select {
+	case s.triggerCh <- struct{}{}:
+	default: // 已有待处理的触发，跳过
+	}
+}
+
+// SyncStatus 同步状态
+type SyncStatus struct {
+	Running  bool       `json:"running"`
+	LastSync *time.Time `json:"last_sync"`
+}
+
+// Status 返回当前同步状态
+func (s *Syncer) Status() SyncStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	status := SyncStatus{Running: s.running}
+	if !s.lastSync.IsZero() {
+		t := s.lastSync
+		status.LastSync = &t
+	}
+	return status
+}
+
+func (s *Syncer) setRunning(v bool) {
+	s.mu.Lock()
+	s.running = v
+	s.mu.Unlock()
+}
+
+// DryRunResult 试运行结果
+type DryRunResult struct {
+	Provider string `json:"provider"`
+	Domain   string `json:"domain"`
+	ToAdd    int    `json:"to_add"`
+	ToDelete int    `json:"to_delete"`
+	Error    string `json:"error,omitempty"`
+}
+
+// DryRun 试运行：DNS 解析 + Diff，不写入不触发事件
+func (s *Syncer) DryRun() ([]DryRunResult, error) {
+	var results []DryRunResult
+	for _, p := range s.providers {
+		rules := filterRulesForTarget(s.cfg.DomainRules, p.TargetIndex())
+		for _, rule := range rules {
+			result := DryRunResult{Provider: p.Name(), Domain: rule.Host}
+
+			resolved, err := s.resolver.Resolve(context.Background(), rule.Host)
+			if err != nil {
+				result.Error = err.Error()
+				results = append(results, result)
+				continue
+			}
+
+			allRules, err := p.GetRules()
+			if err != nil {
+				result.Error = err.Error()
+				results = append(results, result)
+				continue
+			}
+
+			owned := provider.OwnedRules(allRules, s.cfg.Tag)
+			desc := truncateDesc(tag.Format(s.cfg.Tag, rule.Comment), p.CloudType())
+			diff := provider.Diff(resolved, rule, desc, owned, p)
+			result.ToAdd = len(diff.ToAdd)
+			result.ToDelete = len(diff.ToDelete)
+			results = append(results, result)
+		}
+	}
+	return results, nil
 }
 
 // syncAll 执行一轮完整同步
@@ -103,6 +191,9 @@ func (s *Syncer) syncAll() {
 	}
 	wg.Wait()
 
+	s.mu.Lock()
+	s.lastSync = time.Now()
+	s.mu.Unlock()
 	slog.Info("同步完成", "耗时", time.Since(start).Round(time.Millisecond))
 }
 
