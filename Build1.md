@@ -929,6 +929,8 @@ func newTCLighthouse(cfg config.TargetConfig, index int, pool *ClientPool) (Prov
 
 **描述字段限制：** `FirewallRuleDescription` ≤ 64 字符，生成时需截断。截断时必须保证 `[TAG]` 前缀完整（先确保前缀，剩余空间分配给 comment）。
 
+**Port 字段限制：** 长度 ≤ 64 字符。如果用户配置了大量逗号分隔端口导致超限，应拆分为多条规则。
+
 **验收：**
 ```bash
 go build ./...
@@ -1046,44 +1048,20 @@ func (s *Syncer) syncAll() {
 
 // syncDomain 同步单个域名到单个 Provider
 func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
-    // 1. DNS 解析
+    // 1. DNS 解析（失败则保留现有规则，不删除）
     resolved, err := s.resolver.Resolve(context.Background(), rule.Host)
     if err != nil {
         slog.Warn("DNS 解析失败，保留现有规则", "domain", rule.Host, "error", err)
         return
     }
 
-    // 2. 获取当前规则
-    allRules, err := p.GetRules()
-    if err != nil {
-        slog.Error("获取规则失败", "provider", p.Name(), "error", err)
+    // 2. 带重试的完整同步流程（Describe → Diff → Create/Delete）
+    if err := s.retrySync(p, rule, resolved); err != nil {
+        slog.Error("同步失败", "provider", p.Name(), "domain", rule.Host, "error", err)
         return
     }
 
-    // 3. 筛选本工具的规则
-    owned := provider.OwnedRules(allRules, s.cfg.Tag)
-
-    // 4. 计算 Diff
-    desc := tag.Format(s.cfg.Tag, rule.Comment)
-    diff := provider.Diff(resolved, rule, desc, owned, p)
-
-    // 5. 执行删除
-    if len(diff.ToDelete) > 0 {
-        if err := s.retryDelete(p, diff.ToDelete); err != nil {
-            slog.Error("删除规则失败", "provider", p.Name(), "domain", rule.Host, "error", err)
-            return
-        }
-        slog.Info("删除规则", "provider", p.Name(), "domain", rule.Host, "count", len(diff.ToDelete))
-    }
-
-    // 6. 执行添加
-    if len(diff.ToAdd) > 0 {
-        if err := s.retryCreate(p, diff.ToAdd); err != nil {
-            slog.Error("添加规则失败", "provider", p.Name(), "domain", rule.Host, "error", err)
-            return
-        }
-        slog.Info("添加规则", "provider", p.Name(), "domain", rule.Host, "count", len(diff.ToAdd))
-    }
+    slog.Info("同步完成", "provider", p.Name(), "domain", rule.Host)
 }
 
 func (s *Syncer) groupByCloud() map[config.CloudType][]provider.Provider {
@@ -1227,6 +1205,7 @@ func isIdempotentDelete(err error) bool {
     return strings.Contains(msg, "FirewallRulesNotFound") ||
         strings.Contains(msg, "SecurityGroupRuleId.NotFound") ||
         strings.Contains(msg, "SecurityGroupRule.RuleNotExist") ||
+        strings.Contains(msg, "InvalidParam.SecurityGroupRuleId") || // ECS 2024.7.8 新增错误码
         strings.Contains(msg, "InvalidInstanceId.NotFound")
 }
 ```
@@ -1242,9 +1221,15 @@ import (
     "github.com/alcaprophet/fwalizer/config"
 )
 
-// rateLimitInterval 统一频率控制：所有 API 合计不超过每秒 5 次
+// rateLimitInterval 统一频率控制：所有 API 合计不超过每秒 5 次，且不低于云厂商最低要求
 func rateLimitInterval(ct config.CloudType) time.Duration {
-    return 200 * time.Millisecond // 统一 200ms，工具非时效性场景
+    const base = 200 * time.Millisecond // 全局上限 5次/秒
+    switch ct {
+    case config.CloudAliSWAS:
+        return 700 * time.Millisecond // SWAS 100次/60秒 ≈ 1.4次/秒，取 700ms 留余量
+    default:
+        return base
+    }
 }
 ```
 
@@ -1487,9 +1472,12 @@ go get github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc
 
 **特殊约束：**
 - 一次请求只能操作单方向（Ingress）
-- 规则总数上限 100 条（入站+出站），CreateRules 前检查当前 Ingress 数量
+- 规则总数上限 100 条（入站+出站合计，含非本工具管理的规则），CreateRules 前检查安全组**全部规则总数**
+- 规则计数可直接使用 `DescribeSecurityGroupPolicies` 返回的 `PolicyStatistics`（IngressIPv4TotalCount + IngressIPv6TotalCount + EgressIPv4TotalCount + EgressIPv6TotalCount）
 - 删除时传 `PolicyIndex` 字段（从 GetRules 查询结果中获取）
 - 不传 Version 参数
+- **Port 字段限制：** 仅当 Protocol 为 TCP/UDP 时才设置 Port；ICMP/ALL 协议时 Port 字段必须省略（不传），否则 API 报错
+- IPv6CidrBlock 与 ICMP 互斥，IPv6+ICMP 需用 ICMPV6 协议
 
 **验收：**
 ```bash
@@ -1527,7 +1515,7 @@ go get github.com/aliyun/credentials-go
 - 仅支持 IPv4，IPv6 解析结果跳过（记录 WARN 日志）
 - ICMP 端口用 `-1/-1`
 - 协议字段名 `RuleProtocol`，取值 TCP/UDP/TCP+UDP/ICMP
-- 频率限制严格，Syncer 已配置 800ms 间隔
+- 频率限制严格（100次/60秒），Syncer 已配置 700ms 间隔
 - Endpoint: `swas.{region}.aliyuncs.com`
 
 **验收：**
@@ -1555,7 +1543,7 @@ go get github.com/alibabacloud-go/ecs-20140526/v7
 
 | 方法 | API | 关键细节 |
 |------|-----|----------|
-| `GetRules()` | `DescribeSecurityGroupAttribute` | Direction=ingress；映射 Description、SecurityGroupRuleId→RuleID、PortRange→Port |
+| `GetRules()` | `DescribeSecurityGroupAttribute` | Direction=ingress；映射 Description、SecurityGroupRuleId→RuleID、PortRange→Port；**分页用 NextToken + MaxResults**（默认 500，需循环直到 NextToken 为空） |
 | `CreateRules()` | `AuthorizeSecurityGroup` | Permissions 数组；IPv4 用 SourceCidrIp，IPv6 用 Ipv6SourceCidrIp（互斥）；Priority=1 |
 | `DeleteRules()` | `RevokeSecurityGroup` | 用 SecurityGroupRuleId 数组删除（推荐方式） |
 | `ConvertPorts()` | 无 | `portconv.ToSlash(port)` 转斜杠格式 |
@@ -2334,6 +2322,8 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 - 删除支持两种方式：指定 `SecurityGroupRuleId`（推荐）或 Permissions 匹配
 - 本工具只操作 **Ingress**（入方向）规则，使用 `AuthorizeSecurityGroup` / `RevokeSecurityGroup`
 - 优先级 `Priority`：默认 1，范围 1~100
+- **IPv6+ICMP 注意：** AuthorizeSecurityGroup 的 IpProtocol 列表中未明确列出 ICMPv6，但 RevokeSecurityGroup 包含。实现时应尝试使用 `ICMP` + `Ipv6SourceCidrIp`，若 API 报错则跳过该规则并记录 WARN
+- 分页方式：`NextToken` + `MaxResults`（与其他云厂商的 Offset/Limit 不同）
 
 ---
 
