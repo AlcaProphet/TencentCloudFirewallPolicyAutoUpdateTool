@@ -171,9 +171,10 @@ type Provider interface {
 
 **ConvertPort 职责：** 将统一端口格式（如 `80,443,8000-8010`）转换为对应云厂商的端口格式：
 - 腾讯云 Lighthouse：`80,443,8000-8010`（保持原样）
-- 腾讯云 CVM：`80,443,8000-8010`（保持原样）
-- 阿里云轻量云：`80/80,443/443,8000/8010`（斜杠格式）
-- 阿里云 ECS：`80/80,443/443,8000/8010`（斜杠格式）
+- 腾讯云 CVM：不支持逗号分隔，需拆分为多条规则（`80`、`443`、`8000-8010`）
+- 阿里云轻量云：`80/80`、`443/443`、`8000/8010`（斜杠格式，每条规则一个端口/范围）
+- 阿里云 ECS：`80/80`、`443/443`、`8000/8010`（斜杠格式，每条规则一个端口/范围）
+- ICMP 协议：腾讯云用 `ALL`，阿里云用 `-1/-1`
 
 ### 3.2 工厂注册
 
@@ -313,10 +314,10 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 | **添加** | `CreateFirewallRules` | `CreateSecurityGroupPolicies` | `CreateFirewallRules` | `AuthorizeSecurityGroup` |
 | **删除** | `DeleteFirewallRules` | `DeleteSecurityGroupPolicies` | `DeleteFirewallRules` | `RevokeSecurityGroup` |
 | **Endpoint** | `lighthouse.tencentcloudapi.com` | `vpc.tencentcloudapi.com` | `swas.{region}.aliyuncs.com` | `ecs.{region}.aliyuncs.com` |
-| **频率限制** | 10次/秒 | 100次/秒 | 100次/60秒 | 不限 |
+| **频率限制** | 10次/秒 | 查询/删除100次/秒，创建50次/秒 | 100次/60秒 | 不限 |
 | **规则标识字段** | `FirewallRuleDescription` | `PolicyDescription` | `Remark` | `Description` |
-| **端口格式** | `80` 或 `443,80` 或 `ALL` | `80` 或 `8000-8010` | `80` 或 `1/200` | `80/80` 或 `1/200` |
-| **IPv6 字段** | `Ipv6CidrBlock` | `Ipv6CidrBlock` | `SourceCidrIp`（待确认） | `Ipv6SourceCidrIp` |
+| **端口格式** | `80` 或 `443,80` 或 `ALL` | `80` 或 `8000-8010`（不支持逗号分隔） | `80/80` 或 `1/200`，ICMP 用 `-1/-1` | `80/80` 或 `1/200`，ICMP 用 `-1/-1` |
+| **IPv6 字段** | `Ipv6CidrBlock` | `Ipv6CidrBlock` | `SourceCidrIp`（仅 IPv4，不支持 IPv6） | `Ipv6SourceCidrIp` |
 | **操作对象** | `InstanceId` | `SecurityGroupId` | `InstanceId` | `SecurityGroupId` |
 
 ---
@@ -334,24 +335,32 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 
 - SDK: `tencentcloud-sdk-go/tencentcloud/vpc/v20170312`
 - 操作对象是 `SecurityGroupId`（非 InstanceId）
-- 端口格式：单端口或范围，需在 ConvertPort 中转换逗号分隔
-- 删除需传 `PolicyIndex`
+- 端口格式：仅支持单端口（`80`）或范围（`8000-8010`），**不支持逗号分隔**，需在 ConvertPort 中拆分为多条规则
+- 删除支持两种方式：指定 `PolicyIndex` 或规则匹配（Action + Protocol + CidrBlock + Port）
 - 规则描述：`PolicyDescription`
+- 一次请求只能创建/删除单个方向的规则（Ingress 或 Egress）
+- 创建频率限制 50次/秒，查询/删除 100次/秒
 
 ### 6.3 阿里云轻量云 (SWAS-OPEN)
 
-- SDK: `alibaba-cloud-sdk-go/services/swas-open`（V1）
-- 端口格式：`"80"` 或 `"1/200"`（斜杠分隔）
+- SDK: `github.com/alibabacloud-go/swas-open-20200601/v3`（V2 SDK）
+- 端口格式：`"80/80"` 或 `"1/200"`（斜杠分隔），ICMP 用 `"-1/-1"`
 - 规则标识：`Remark`
+- 协议字段名：`RuleProtocol`（取值：TCP / UDP / TCP+UDP / ICMP）
+- 删除接口需要 `RuleIds`（规则 ID 列表），需先通过 ListFirewallRules 获取 RuleId
 - 频率限制严格：100次/60秒，建议 800ms 间隔
+- 仅支持 IPv4（`SourceCidrIp`），不支持 IPv6
 
 ### 6.4 阿里云 ECS 安全组
 
-- SDK: `alibaba-cloud-sdk-go/services/ecs`
+- SDK: `github.com/alibabacloud-go/ecs-20140526/v7`（V2 SDK）
 - 操作对象是 `SecurityGroupId`
-- 端口格式必须用斜杠：`"80/80"` 或 `"1/200"`
-- IPv6 用独立字段 `Ipv6SourceCidrIp`
-- 规则标识：`Description`（≤ 256 字节）
+- 端口格式必须用斜杠：`"80/80"` 或 `"1/200"`，ICMP 用 `"-1/-1"`
+- IPv6 用独立字段 `Ipv6SourceCidrIp`（与 `SourceCidrIp` 不可同时设置）
+- 规则标识：`Description`（1~512 个字符）
+- 规则已存在时调用 AuthorizeSecurityGroup 成功但不重复添加
+- 删除支持两种方式：指定 `SecurityGroupRuleId`（推荐）或 Permissions 匹配
+- 优先级 `Priority`：默认 1，范围 1~100
 
 ---
 
@@ -499,8 +508,11 @@ require (
     github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse v1.3.108
     github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.xxx    // 新增
 
-    // 阿里云（V1，已终止支持，后续关注 V2 迁移）
-    github.com/aliyun/alibaba-cloud-sdk-go v1.63.xxx                         // 新增
+    // 阿里云 V2 SDK
+    github.com/alibabacloud-go/swas-open-20200601/v3 v3.x.x                  // 新增（轻量云）
+    github.com/alibabacloud-go/ecs-20140526/v7 v7.x.x                        // 新增（ECS）
+    github.com/alibabacloud-go/darabonba-openapi/v2 v2.x.x                   // 新增（SDK 核心库）
+    github.com/aliyun/credentials-go v1.x.x                                  // 新增（凭据管理）
 
     // 系统托盘（仅桌面端）
     fyne.io/systray v1.11.0                                                  // 新增

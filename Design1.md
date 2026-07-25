@@ -125,7 +125,7 @@ StoreLoader (SQLite)  ──→ Config ──→ Syncer（支持热重载）
 - **端口格式**：各云不一致（逗号分隔 / 范围 / 斜杠格式），需统一转换
 - **频率限制**：腾讯云 10次/秒，阿里云轻量云 100次/60秒，差异显著
 - **规则标识**：均通过描述字段 + `[TAG]` 前缀识别本工具创建的规则
-- **IPv6**：腾讯云独立 `Ipv6CidrBlock` 字段，阿里云 ECS 独立 `Ipv6SourceCidrIp`，阿里云轻量云待确认
+- **IPv6**：腾讯云独立 `Ipv6CidrBlock` 字段，阿里云 ECS 独立 `Ipv6SourceCidrIp`，阿里云轻量云不支持 IPv6
 
 ### 6.3 Provider 抽象设计
 
