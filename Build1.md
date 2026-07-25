@@ -1800,15 +1800,43 @@ curl http://127.0.0.1:9090/api/health  # 返回 {"status":"ok"}
 
 **产出文件：** `webui/frontend/` 目录
 
-**技术约束：**
-- Vue 3 通过 CDN 引入（`<script src="https://unpkg.com/vue@3">`）
-- 无构建工具（无 npm/webpack）
-- 单 HTML 文件 + 内联 JS，或简单多文件
-- 通过 `//go:embed frontend/dist` 编译进二进制
+**技术栈：**
+- Vue 3 + TypeScript + Vite
+- Naive UI（组件库）
+- pnpm（包管理）
+- 构建产物通过 `//go:embed frontend/dist` 编译进二进制
 
-**页面：** 仪表盘 / 云资源管理 / 域名规则 / 全局设置 / 同步日志
+**初始化命令：**
+```bash
+cd webui/frontend
+pnpm create vite . --template vue-ts
+pnpm add naive-ui
+pnpm add -D @vitejs/plugin-vue
+```
 
-**验收：** 浏览器访问 `http://127.0.0.1:9090` 可操作全部功能。
+**视觉规范：**
+- 布局：左侧导航栏（NLayout + NMenu）+ 右侧内容区
+- 主题：亮色/暗色跟随系统（Naive UI `darkTheme`）
+- 主色：Naive UI 默认蓝 #2080f0，不自定义
+- 最小宽度 1024px，不考虑移动端
+
+**页面与组件映射：**
+
+| 页面 | 路由 | 主要组件 |
+|------|------|----------|
+| 仪表盘 | `/` | NCard、NStatistic、NTag |
+| 云资源管理 | `/targets` | NDataTable、NModal、NForm |
+| 域名规则 | `/rules` | NDataTable、NModal、NForm、NSelect |
+| 全局设置 | `/settings` | NForm、NSwitch、NInputNumber |
+| 同步日志 | `/logs` | NDataTable、NTag |
+| 高级功能 | `/advanced` | NButton、NCode、NUpload |
+| 告警配置 | `/alerts` | NForm、NInput、NSwitch |
+
+**验收：**
+```bash
+cd webui/frontend && pnpm build && cd ../..
+go build . && ./fwalizer  # 浏览器访问 http://127.0.0.1:9090
+```
 
 ---
 
@@ -1918,13 +1946,21 @@ fwalizer/
 │   └── ratelimit.go             # API 频率控制
 ├── webui/
 │   ├── server.go                # HTTP Server
+│   ├── embed.go                 # //go:embed frontend/dist
 │   ├── api/                     # REST API handlers
 │   │   ├── targets.go           # 云资源 CRUD
 │   │   ├── rules.go             # 规则 CRUD
 │   │   ├── sync.go              # 同步状态/手动触发
 │   │   └── settings.go          # 全局设置
-│   └── frontend/                # Vue 3 SPA（embed 嵌入）
-│       └── dist/
+│   └── frontend/                # Vue 3 + Vite + Naive UI
+│       ├── package.json
+│       ├── vite.config.ts
+│       ├── src/
+│       │   ├── App.vue
+│       │   ├── main.ts
+│       │   ├── views/           # 页面组件
+│       │   └── components/      # 通用组件
+│       └── dist/                # 构建产物（go:embed）
 ├── notifier/                    # 事件总线 + 告警
 │   ├── bus.go
 │   ├── email.go

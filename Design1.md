@@ -157,9 +157,23 @@ Syncer ──→ Provider 接口
 | 层 | 技术 | 理由 |
 |---|------|------|
 | 后端 | Go `net/http` + `encoding/json` | 标准库，无外部依赖 |
-| 前端 | **Vue 3** | 轻量，CDN 引入 |
-| 嵌入 | Go `embed` | 编译进二进制 |
+| 前端框架 | **Vue 3** + **Vite** | 本地构建，产物 embed 进二进制 |
+| UI 组件库 | **Naive UI** | 轻量、TypeScript 原生、中文生态好 |
+| 嵌入 | Go `embed` | `webui/frontend/dist/` 编译进二进制 |
 | 存储 | **SQLite** (`modernc.org/sqlite`) | 纯 Go、单文件 |
+| 包管理 | **pnpm** | 快速、省空间 |
+
+### 视觉规范
+
+| 维度 | 规范 |
+|------|------|
+| 风格 | 简洁工具风，无花哨动画，信息密度优先 |
+| 主题 | 支持亮色/暗色切换（Naive UI 内置），默认跟随系统 |
+| 布局 | 左侧导航栏 + 右侧内容区，宽度自适应 |
+| 主色 | Naive UI 默认蓝（#2080f0），不自定义主题 |
+| 字体 | 系统默认字体栈，不引入 Web Font |
+| 响应式 | 最小支持 1024px（内部工具，不考虑移动端） |
+| 图标 | Naive UI 内置图标，不额外引入图标库 |
 
 ### 功能页面
 
@@ -171,6 +185,16 @@ Syncer ──→ Provider 接口
 ├── 同步日志（最近 N 条记录）
 ├── 高级功能（Dry Run、配置导入/导出、健康检查）
 └── 告警配置（邮件、Webhook）
+```
+
+### 构建流程
+
+```bash
+cd webui/frontend
+pnpm install
+pnpm build          # 产物输出到 dist/
+cd ../..
+go build .          # go:embed 自动包含 dist/
 ```
 
 ---
@@ -219,7 +243,8 @@ notifier/
 | 多云抽象 | Provider 接口 + 工厂注册 |
 | 统一规则模型 | RuleInfo / RuleAction |
 | Web 后端 | `net/http` 标准库 |
-| Web 前端 | Vue 3 |
+| Web 前端 | Vue 3 + Vite + Naive UI（本地构建） |
+| 前端包管理 | pnpm |
 | 配置存储 | SQLite（`modernc.org/sqlite`） |
 | 桌面方案 | 系统托盘 + 浏览器 WebUI |
 | 系统托盘库 | `fyne.io/systray` |
