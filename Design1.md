@@ -99,6 +99,11 @@ StoreLoader (SQLite)  ──→ Config ──→ Syncer（支持热重载）
 └── 退出
 ```
 
+**开机自启**：仅 Windows 和 macOS 支持，作为用户可选设置项（WebUI「全局设置」中开关），**默认不启用**。
+- Windows：写入注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- macOS：生成 `~/Library/LaunchAgents/com.fwalizer.agent.plist`
+- Linux：不提供内置支持（用户自行配置 systemd user unit）
+
 **CGO 说明：** 托盘库 `fyne.io/systray` 在 macOS 需要 CGO，桌面端构建 `CGO_ENABLED=1`，与 Docker 的纯静态编译（`CGO_ENABLED=0`）通过 Go build tags 分离。
 
 ---
@@ -218,6 +223,7 @@ notifier/
 | 桌面方案 | 系统托盘 + 浏览器 WebUI |
 | 系统托盘库 | `fyne.io/systray` |
 | 构建分离 | Go build tags + CGO 差异 |
+| 开机自启 | Windows + macOS，用户设置项，默认关闭 |
 | 配置热重载 | channel 通知 Syncer |
 | 健康检查 | `/api/health` HTTP 端点 |
 | 扩展架构 | Event Bus + Subscriber |
@@ -226,8 +232,15 @@ notifier/
 | 凭据管理 | 按云厂商独立环境变量 |
 | 同步并发策略 | 跨厂商并行，同厂商串行 |
 | 桌面存储路径 | 系统标准路径 |
-| 版本号注入 | ldflags `-X main.version` |
-| DNS 失败处理 | 渐进式熔断 |
+| 协议支持 | TCP / UDP / TCP+UDP / ICMP |
+| 端口输入格式 | 单端口、逗号分隔、范围（`8000-8010`）、`ALL` |
+| Dry Run | 执行到 Diff 为止，不实际写入 |
+| 配置导入/导出 | JSON 格式 |
+| SQLite 并发 | WAL 模式 + 短事务 |
+| 进程锁 | WebUI 模式 pidfile 防多实例 |
+| EventBus 投递 | 异步，Subscriber 失败仅记日志 |
+| 版本号注入 | ldflags `-X github.com/alcaprophet/fwalizer/version.Version` |
+| DNS 失败处理 | 渐进式熔断（半开探测恢复） |
 | 日志级别 | `LOG_LEVEL` 环境变量 |
 
 ---
