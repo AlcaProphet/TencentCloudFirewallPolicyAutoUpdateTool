@@ -224,12 +224,12 @@ notifier/
 
 ## 九、实施路线
 
-| Phase | 内容 | 周期 |
-|-------|------|------|
-| **Phase 1** | Provider 抽象 + 多云基础 + 配置重设计 + CLI | 1-2 周 |
-| **Phase 2** | WebUI + 配置持久化 + 热重载 | 1-2 周 |
-| **Phase 3** | 告警 + 高级功能（EventBus、Dry Run、导入导出） | 1-2 周 |
-| **Phase 4** | 桌面端 + 打磨（系统托盘、打包、日志持久化） | 1-2 周 |
+| Phase | 内容 | 对应 Step |
+|-------|------|----------|
+| **Phase 1** | Provider 抽象 + 多云基础 + 配置 + CLI + DNS 熔断 + EventBus + Docker | Step 1–12 |
+| **Phase 2** | WebUI + 配置持久化 + 热重载 + Dry Run + 导入导出 | Step 13–14 |
+| **Phase 3** | 告警（邮件、Webhook）+ 高级功能 | Step 15 |
+| **Phase 4** | 桌面端（系统托盘、开机自启） | Step 16 |
 
 ---
 

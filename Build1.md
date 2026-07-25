@@ -564,7 +564,7 @@ func (r *Resolver) Resolve(ctx context.Context, host string) ([]ResolvedIP, erro
 
     var results []ResolvedIP
 
-    // A 记录
+    // A + AAAA 记录（LookupIPAddr 同时返回 IPv4 和 IPv6）
     addrs, err := r.resolver.LookupIPAddr(ctx, host)
     if err != nil {
         return nil, fmt.Errorf("DNS 解析失败 %s: %w", host, err)
@@ -804,6 +804,10 @@ func buildDesired(
     ports := p.ConvertPorts(rule.Ports)
 
     for _, ip := range resolved {
+        // IPv6 过滤：不支持 IPv6 的云厂商跳过
+        if ip.IsIPv6 && !supportsIPv6(p.CloudType()) {
+            continue
+        }
         for _, port := range ports {
             action := config.RuleAction{
                 Protocol:    rule.Protocol,
@@ -820,6 +824,16 @@ func buildDesired(
         }
     }
     return actions
+}
+
+// supportsIPv6 判断云厂商是否支持 IPv6
+func supportsIPv6(ct config.CloudType) bool {
+    switch ct {
+    case config.CloudAliSWAS:
+        return false // 阿里云轻量云不支持 IPv6
+    default:
+        return true
+    }
 }
 
 // ClientPool SDK Client 复用池
@@ -913,7 +927,7 @@ func newTCLighthouse(cfg config.TargetConfig, index int, pool *ClientPool) (Prov
 | `DeleteRules()` | `DeleteFirewallRules` | 捕获 `ResourceNotFound.FirewallRulesNotFound` 视为成功 |
 | `ConvertPorts()` | 无 | 直接返回 `[port]`（Lighthouse 支持逗号分隔） |
 
-**描述字段限制：** `FirewallRuleDescription` ≤ 64 字符，生成时需截断。
+**描述字段限制：** `FirewallRuleDescription` ≤ 64 字符，生成时需截断。截断时必须保证 `[TAG]` 前缀完整（先确保前缀，剩余空间分配给 comment）。
 
 **验收：**
 ```bash
@@ -1114,63 +1128,76 @@ func WaitForSignal(s *Syncer) {
 package syncer
 
 import (
+    "context"
     "log/slog"
+    "strings"
     "time"
 
     "github.com/alcaprophet/fwalizer/config"
+    "github.com/alcaprophet/fwalizer/dns"
+    "github.com/alcaprophet/fwalizer/internal/tag"
     "github.com/alcaprophet/fwalizer/provider"
 )
 
 const maxRetries = 3
 
-// retryCreate 带重试的创建
-func (s *Syncer) retryCreate(p provider.Provider, rules []config.RuleAction) error {
-    var err error
+// retrySync 带重试的完整同步流程（Describe → Diff → Create/Delete）
+// 每次重试都重新获取最新规则状态（乐观锁）
+func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved []dns.ResolvedIP) error {
+    var lastErr error
     for i := 0; i < maxRetries; i++ {
-        err = p.CreateRules(rules)
-        if err == nil {
-            return nil
+        if i > 0 {
+            backoff := time.Duration(1<<uint(i-1)) * time.Second
+            slog.Warn("重试同步", "attempt", i+1, "backoff", backoff, "provider", p.Name())
+            time.Sleep(backoff)
         }
-        if isIdempotentCreate(err) {
-            slog.Warn("规则已存在，跳过", "provider", p.Name())
-            return nil
-        }
-        if !isRetryable(err) {
-            return err
-        }
-        backoff := time.Duration(1<<uint(i)) * time.Second
-        slog.Warn("创建失败，重试", "attempt", i+1, "backoff", backoff, "error", err)
-        time.Sleep(backoff)
-    }
-    return err
-}
 
-// retryDelete 带重试的删除
-func (s *Syncer) retryDelete(p provider.Provider, rules []config.RuleInfo) error {
-    var err error
-    for i := 0; i < maxRetries; i++ {
-        err = p.DeleteRules(rules)
-        if err == nil {
-            return nil
+        // 1. 重新获取当前规则（乐观锁核心）
+        allRules, err := p.GetRules()
+        if err != nil {
+            lastErr = err
+            if !isRetryable(err) { return err }
+            continue
         }
-        if isIdempotentDelete(err) {
-            slog.Warn("规则已不存在，视为成功", "provider", p.Name())
-            return nil
+
+        // 2. 筛选本工具规则 + Diff
+        owned := provider.OwnedRules(allRules, s.cfg.Tag)
+        desc := tag.Format(s.cfg.Tag, rule.Comment)
+        diff := provider.Diff(resolved, rule, desc, owned, p)
+
+        // 3. 执行删除
+        if len(diff.ToDelete) > 0 {
+            if err := p.DeleteRules(diff.ToDelete); err != nil {
+                if isIdempotentDelete(err) {
+                    slog.Warn("规则已不存在，跳过", "provider", p.Name())
+                } else {
+                    lastErr = err
+                    if !isRetryable(err) { return err }
+                    continue
+                }
+            }
         }
-        if !isRetryable(err) {
-            return err
+
+        // 4. 执行添加
+        if len(diff.ToAdd) > 0 {
+            if err := p.CreateRules(diff.ToAdd); err != nil {
+                if isIdempotentCreate(err) {
+                    slog.Warn("规则已存在，跳过", "provider", p.Name())
+                } else {
+                    lastErr = err
+                    if !isRetryable(err) { return err }
+                    continue
+                }
+            }
         }
-        backoff := time.Duration(1<<uint(i)) * time.Second
-        slog.Warn("删除失败，重试", "attempt", i+1, "backoff", backoff, "error", err)
-        time.Sleep(backoff)
+
+        return nil // 成功
     }
-    return err
+    return lastErr
 }
 
 // isRetryable 判断是否可重试
 func isRetryable(err error) bool {
-    // 网络超时、频率限制、服务端错误、防火墙忙 → 可重试
-    // 参数错误、权限错误 → 不可重试
     msg := err.Error()
     retryable := []string{
         "RequestLimitExceeded",
@@ -1180,7 +1207,7 @@ func isRetryable(err error) bool {
         "connection refused",
     }
     for _, r := range retryable {
-        if contains(msg, r) {
+        if strings.Contains(msg, r) {
             return true
         }
     }
@@ -1190,30 +1217,17 @@ func isRetryable(err error) bool {
 // isIdempotentCreate 判断“规则已存在”
 func isIdempotentCreate(err error) bool {
     msg := err.Error()
-    return contains(msg, "FirewallRulesExist") ||
-        contains(msg, "FirewallRuleAlreadyExist")
+    return strings.Contains(msg, "FirewallRulesExist") ||
+        strings.Contains(msg, "FirewallRuleAlreadyExist")
 }
 
 // isIdempotentDelete 判断“规则已不存在”
 func isIdempotentDelete(err error) bool {
     msg := err.Error()
-    return contains(msg, "FirewallRulesNotFound") ||
-        contains(msg, "SecurityGroupRuleId.NotFound") ||
-        contains(msg, "SecurityGroupRule.RuleNotExist") ||
-        contains(msg, "InvalidInstanceId.NotFound")
-}
-
-func contains(s, substr string) bool {
-    return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
-}
-
-func containsSubstr(s, sub string) bool {
-    for i := 0; i <= len(s)-len(sub); i++ {
-        if s[i:i+len(sub)] == sub {
-            return true
-        }
-    }
-    return false
+    return strings.Contains(msg, "FirewallRulesNotFound") ||
+        strings.Contains(msg, "SecurityGroupRuleId.NotFound") ||
+        strings.Contains(msg, "SecurityGroupRule.RuleNotExist") ||
+        strings.Contains(msg, "InvalidInstanceId.NotFound")
 }
 ```
 
@@ -1228,22 +1242,15 @@ import (
     "github.com/alcaprophet/fwalizer/config"
 )
 
-// rateLimitInterval 根据云厂商返回请求间隔
+// rateLimitInterval 统一频率控制：所有 API 合计不超过每秒 5 次
 func rateLimitInterval(ct config.CloudType) time.Duration {
-    switch ct {
-    case config.CloudAliSWAS:
-        return 800 * time.Millisecond // 100次/60秒
-    case config.CloudTCLighthouse:
-        return 200 * time.Millisecond // 10次/秒
-    default:
-        return 100 * time.Millisecond // CVM 50次/秒、ECS 无限制
-    }
+    return 200 * time.Millisecond // 统一 200ms，工具非时效性场景
 }
 ```
 
 **约束：**
 - syncDomain 中 DNS 失败不删除现有规则（仅 WARN 日志）
-- 重试时不重新 Describe（当前设计），仅在下一轮 syncAll 时重新获取
+- 重试时重新走完整流程：Describe → Diff → Create/Delete（乐观锁）
 - 优雅退出：收到信号后等待当前 syncAll 完成
 
 **验收：**
@@ -1299,6 +1306,7 @@ package app
 import (
     "fmt"
     "log/slog"
+    "os"
 
     "github.com/alcaprophet/fwalizer/config"
     "github.com/alcaprophet/fwalizer/dns"
@@ -1416,7 +1424,6 @@ func main() {
     }
 
     // 检测模式
-    cfg := &config.Config{}
     mode := app.DetectMode(os.Getenv("FWALIZER_MODE"))
 
     switch mode {
@@ -1731,7 +1738,7 @@ RUN adduser -D appuser
 COPY --from=builder /fwalizer /usr/local/bin/fwalizer
 USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD pgrep fwalizer || exit 1
+    CMD wget -q --spider http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
 ENTRYPOINT ["fwalizer"]
 ```
 
@@ -1995,8 +2002,8 @@ const (
 
 ```go
 type RuleInfo struct {
-    Protocol      string // TCP / UDP / TCP+UDP / ICMP / ALL
-    Port          string // 归一化为 "port" 或 "start-end"
+    Protocol      string // TCP / UDP / TCP+UDP / ICMP / ICMPv6 / ALL（ICMPv6 为 Lighthouse 内部转换，用户不感知）
+    Port          string // 归一化为 "port" 或 "start-end" 或 "ALL"
     CidrBlock     string // IPv4 CIDR
     Ipv6CidrBlock string // IPv6 CIDR
     Action        string // ACCEPT / DROP
@@ -2103,7 +2110,7 @@ type Provider interface {
 ### 3.2 工厂注册
 
 ```go
-type Factory func(cfg TargetConfig, pool *ClientPool) (Provider, error)
+type Factory func(cfg TargetConfig, index int, pool *ClientPool) (Provider, error)
 
 var registry = map[CloudType]Factory{}
 
@@ -2111,12 +2118,12 @@ func Register(cloudType CloudType, factory Factory) {
     registry[cloudType] = factory
 }
 
-func NewProvider(cfg TargetConfig, pool *ClientPool) (Provider, error) {
+func NewProvider(cfg TargetConfig, index int, pool *ClientPool) (Provider, error) {
     factory, ok := registry[cfg.CloudType]
     if !ok {
         return nil, fmt.Errorf("不支持的云产品类型: %s", cfg.CloudType)
     }
-    return factory(cfg, pool)
+    return factory(cfg, index, pool)
 }
 ```
 
@@ -2144,13 +2151,15 @@ func OwnedRules(allRules []RuleInfo, tagPrefix string) []RuleInfo {
     return owned
 }
 
+// Diff 计算需要添加和删除的规则
+// 传入 Provider 接口（用于 ConvertPorts + CloudType 判断 IPv6 支持）
 func Diff(
     resolved []dns.ResolvedIP,
     rule DomainRule,
     desc string,
     existing []RuleInfo,
-    portConverter func(string) []string,
-) (toAdd []RuleAction, toDelete []RuleInfo) {
+    p Provider,
+) DiffResult {
     // 通用 diff 逻辑，与云厂商无关
     // toDelete 返回 RuleInfo（保留 RuleID/PolicyIndex 供删除使用）
 }
@@ -2170,8 +2179,8 @@ type Syncer struct {
     configCh   chan *config.Config  // 热更新
     stopCh     chan struct{}
     wg         sync.WaitGroup
-    clientPool *ClientPool
 }
+// 注：ClientPool 由 app.Run 创建并传入 Provider 工厂，Syncer 不直接持有。
 
 // ClientPool SDK Client 复用池
 // 相同 cloudType + region + accessID 的 Target 共享同一个 SDK Client，
@@ -2262,9 +2271,9 @@ func (s *Syncer) rateLimitInterval(cloudType CloudType) time.Duration {
 
 ### 4.6 规则数量限制
 
-- 腾讯云 CVM 安全组：单安全组规则上限 **100 条**（入站 + 出站合计）
+- 腾讯云 CVM 安全组：单安全组规则上限 **100 条**（入站 + 出站合计，包括非本工具管理的规则）
 - 其他云厂商：暂无硬性限制（Lighthouse 无明确上限，阿里云较宽松）
-- CreateRules 前应检查当前规则数，接近上限时记录 ERROR 日志并跳过新增
+- CreateRules 前应检查当前安全组**全部规则总数**（含 Egress），接近上限时记录 ERROR 日志并跳过新增
 
 ---
 
@@ -2537,16 +2546,16 @@ type EventBus struct {
 - `context.WithTimeout` 整体超时：**10s**（通过 `DNS_TIMEOUT` 环境变量配置，默认 `10s`）
 - 各域名 DNS 解析并行执行，提前收集结果后再 Diff
 
-### 12.2 Docker HEALTHCHECK 升级
+### 12.2 Docker HEALTHCHECK
 
 ```dockerfile
-# WebUI 模式
+# 兼容两种模式：WebUI 模式用 HTTP 端点，.env 模式用进程检测
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget -q --spider http://localhost:9090/api/health || exit 1
+    CMD wget -q --spider http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
 ```
 
-- WebUI 模式：HTTP 端点检测（`/api/health`）
-- `.env` 模式：`pgrep fwalizer` 进程检测（Alpine 无 `killall -0`）
+- WebUI 模式：wget 访问 `/api/health` 成功即健康
+- `.env` 模式：无 HTTP 服务，wget 失败后回退到 `pgrep` 检测进程存活
 
 ### 12.3 同步日志持久化（SQLite）
 
