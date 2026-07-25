@@ -1,156 +1,149 @@
-# AGENTS.md — FWAlizer 项目规范
+# AGENTS.md — FWAlizer AI 编码指令
 
-## 项目概述
+> 本文档是给 AI 编码助手的指令集。项目设计大纲见 [Design1.md](./Design1.md)，技术实现细节见 [Build1.md](./Build1.md)。
 
-**FWAlizer**（Firewall DNS Synchronizer）是一个运行在 Docker 容器中的轻量级自动化工具。它通过 DNS 解析指定域名的 IP 地址，并自动将解析结果同步到腾讯云 Lighthouse 实例的防火墙白名单中。
+---
 
-## 📋 待办计划
+## 一、项目基本信息
 
-- [ ] **多实例多地域支持**：当前仅支持单实例单地域（`LIGHTHOUSE_INSTANCE_ID` + `LIGHTHOUSE_REGION`）。需改造为支持多实例多地域，涉及：
-  - 配置格式：`LIGHTHOUSE_INSTANCES=lhins-xxx|ap-guangzhou,lhins-yyy|ap-shanghai`
-  - 多 Client 管理：按 region 复用 SDK client
-  - 同步循环：外层遍历所有实例
-  - API 频率控制：实例间需额外间隔（共享 10次/秒 配额）
-  - 检测到规则已存在时，应该提示并跳过，而不是报错
+- **模块路径**：`github.com/alcaprophet/fwalizer`
+- **Go 版本**：`go 1.25`
+- **设计文档优先**：编码前先阅读 [Design1.md](./Design1.md) 和 [Build1.md](./Build1.md)
 
-## 技术栈
+---
 
-| 层 | 技术 | 说明 |
-|---|------|------|
-| 语言 | **Go 1.25+** | 单一二进制，无运行时依赖 |
-| SDK | `github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse` | 腾讯云国内站 Go SDK |
-| 部署 | **Docker** (alpine 3.20) | 多阶段构建，最终镜像约 14MB |
-| CI/CD | **GitHub Actions** | 自动编译 + 推送到 ghcr.io |
-| 配置 | **.env** 文件 | 通过 `docker run --env-file` 传入 |
+## 二、核心编码原则
 
-## 核心设计约束
+### 简单轻量化
 
-### 1. 防火墙规则操作约束
+- 功能做减法，不引入不必要的抽象和重型框架
+- 优先使用 Go 标准库（`net/http`、`encoding/json`、`time.Ticker`、`log/slog`）
+- 不使用 gin/echo 等 HTTP 框架，不使用外部 cron 库
+- 单二进制分发，无运行时依赖
 
-- **绝不**使用 `ModifyFirewallRules`（会全量覆盖，误删非本工具管理的规则）
+### 不过度防御
+
+- 聚焦核心场景，不对极端边界做过度防御性编程
+- 合理假设输入有效性，不做无意义的 nil 检查链
+- 错误处理到位即可，不堆叠冗余的 fallback 逻辑
+
+### 安全设计（内部使用导向）
+
+- 项目以**内部使用**为设计前提，WebUI 不针对公开访问设计
+- 网络安全边界由用户自己控制（防火墙、VPN、反向代理等）
+- WebUI 默认绑定 `127.0.0.1`，端口通过 `WEBUI_PORT` 配置（默认 `9090`）
+- Docker 用户通过 `-p` 自行决定暴露范围
+- 凭据通过独立环境变量传入，不与资源声明混合
+
+### 开箱即用
+
+- 最小化前置依赖，首次运行即可工作
+- 配置有合理默认值，无必填项阻塞启动
+- WebUI 模式下自动打开浏览器，无需手动操作
+
+### 不确定时主动提问
+
+- 遇到模糊需求、多种可行方案或技术取舍时，使用提问工具询问用户
+- 提问时**必须附上推荐选项**并简要说明理由
+- 不要在假设下自行决定关键设计
+
+---
+
+## 三、防火墙规则操作约束
+
+- **绝不**使用 `ModifyFirewallRules`（全量覆盖，会误删非本工具管理的规则）
 - **只用** `CreateFirewallRules`（增量添加）和 `DeleteFirewallRules`（精确删除）
-- 所有由本工具创建的规则，必须通过 `FirewallRuleDescription` 字段标记，格式：
+- 所有由本工具创建的规则，通过对应的描述字段标记，格式：
   ```
-  [RULE_TAG:hostname] [comment]
+  [TAG:hostname] [comment]
   ```
-  其中 `comment` 为 `DOMAIN_RULES` 中的可选备注。无备注时仅保留 `[RULE_TAG:hostname]`。
+- 不同云厂商的规则标识字段不同（详见 Build1.md），均以 `[TAG]` 前缀识别
+- 检测到规则已存在时，提示并跳过，不报错
 
-### 2. DNS 解析约束
+---
 
-- 使用 **自定义 DNS 服务器**（`.env` 中 `DNS_SERVER` 指定，如 `8.8.8.8:53`）
+## 四、DNS 解析约束
+
+- 使用自定义 DNS 服务器（`DNS` 环境变量指定）
 - 通过 Go `net.Resolver` 的 `Dial` 函数指定上游 DNS
 - 同时解析 **A 记录（IPv4）** 和 **AAAA 记录（IPv6）**
-- IPv4 写入 `CidrBlock` 字段（格式：`1.2.3.4/32`）
-- IPv6 写入 `Ipv6CidrBlock` 字段（格式：`2001:db8::1/128`）
-- 域名解析失败时：记录 WARN 日志，保留现有规则不变（不删除）
-- ⚠️ 每个域名应仅解析到少量 IP（单台服务器场景），不支持 CDN 等返回大量 IP 的域名
+- IPv4 → `CidrBlock` 字段（格式 `1.2.3.4/32`）
+- IPv6 → `Ipv6CidrBlock` 字段（格式 `2001:db8::1/128`）
+- 域名解析失败：记录 WARN 日志，保留现有规则不变（不删除）
+- ⚠️ 仅支持单台服务器场景（少量 IP），不支持 CDN 等返回大量 IP 的域名
 
-### 3. 定时调度约束
+---
 
-- 使用 Go 标准库 `time.Ticker`，不依赖外部 cron
-- 间隔由 `.env` 中 `CHECK_INTERVAL` 控制（如 `5m`、`30m`、`1h`）
+## 五、同步调度约束
+
+- 使用 `time.Ticker`，不依赖外部 cron
+- 间隔由 `INTERVAL` 环境变量控制（如 `5m`、`30m`、`1h`）
 - 优雅退出：收到 `SIGTERM`/`SIGINT` 后，完成当前轮次再退出
+- 支持配置热重载（WebUI 修改后通过 channel 通知 Syncer）
 
-### 4. 乐观锁约束
+---
 
-- 通过重新 Describe + Diff 实现乐观锁：每次写入前重新拉取最新规则状态
-- 不传入 `FirewallVersion` 参数（由腾讯云 API 自行管理版本号，避免版本冲突错误）
-- 写入失败时自动重试（最多 3 次，指数退避）
-- 重试步骤：重新 Describe → 重新 diff → 重新 Create/Delete
+## 六、乐观锁与重试
 
-### 5. API 频率限制约束
+- 每次写入前重新拉取最新规则状态（Describe → Diff → Create/Delete）
+- 不传入 `FirewallVersion` 参数（由云 API 自行管理版本号）
+- 写入失败自动重试（最多 3 次，指数退避）
+- 重试时重新走完整流程：Describe → Diff → Create/Delete
 
-- Lighthouse 防火墙 API 限制为 **10次/秒**
-- 每个域名的同步操作（Describe + Create + Delete）约 3 次 API 调用
-- 域名之间加入 **500ms** 间隔，确保每秒约 6 次调用，留有安全余量
+---
 
-### 6. Docker 约束
+## 七、API 频率限制
+
+- 不同云厂商频率限制不同，取对应间隔（详见 Build1.md）
+- 同一云厂商内串行处理（共享配额），域名之间加入间隔
+- 不同云厂商可并行同步（API 配额独立）
+
+---
+
+## 八、Docker 约束
 
 - 基础镜像：`alpine:3.20`
 - 编译镜像：`golang:1.25-alpine`
-- `CGO_ENABLED=0` 静态编译
-- 以非 root 用户运行（`adduser -D appuser`）
-- 仅暴露 stdout 日志（`docker logs` 查看）
-- 支持 `HEALTHCHECK`
+- `CGO_ENABLED=0` 静态编译（Docker 构建）
+- 非 root 用户运行（`adduser -D appuser`）
+- 日志输出到 stdout（`docker logs` 查看）
+- 支持 `HEALTHCHECK`（WebUI 模式用 HTTP 端点，`.env` 模式用进程检测）
 
-### 7. 配置约束
+---
 
-- 所有配置通过 `.env` 环境变量传入
-- `.env` 文件绝不提交 Git
+## 九、配置约束
+
+- `.env` 文件**不提交 Git**
 - 提供 `.env.example` 模板
-- 密钥必须使用腾讯云 **CAM 子账号 + 最小权限**
+- 密钥使用云厂商 **CAM 子账号 + 最小权限**
+- 凭据按云厂商独立环境变量（不嵌入 TARGETS）
 
-### 8. GitHub Actions 约束
+---
 
-- 推送 tag（如 `v1.0.0`）时自动构建并推送 Docker 镜像到 **ghcr.io**
+## 十、CI/CD 约束
+
+- 推送 tag（如 `v1.0.0`）时自动构建 Docker 镜像推送到 **ghcr.io**
 - 镜像命名：`ghcr.io/alcaprophet/fwalizer:<tag>`
 - 构建平台：`linux/amd64`
 - PR 时仅编译检查，不推送镜像
 
-## 配置项参考 (.env)
+---
 
-```env
-TENCENTCLOUD_SECRET_ID=     # 必填，腾讯云 SecretId
-TENCENTCLOUD_SECRET_KEY=    # 必填，腾讯云 SecretKey
-LIGHTHOUSE_INSTANCE_ID=    # 必填，目标 Lighthouse 实例 ID
-LIGHTHOUSE_REGION=         # 必填，实例地域（如 ap-guangzhou）
-DOMAIN_RULES=              # 必填，域名规则，格式见下
-RULE_TAG=auto-dns          # 可选，规则描述前缀
-CHECK_INTERVAL=5m          # 可选，检查间隔
-DNS_SERVER=8.8.8.8:53      # 可选，DNS 服务器
-```
+## 十一、代码规范
 
-### DOMAIN_RULES 格式
+- **所有 error 必须处理**，不可忽略返回值
+- 日志使用 `log/slog`（Go 1.21+ 内置结构化日志）
+- 注释使用**中文**（面向国内开发者）
+- 遵守 `TencentAPIGuide/` 中的 API 文档要求（参数格式、字段长度限制、频率限制）
+- 多云抽象基于 Provider 接口 + 工厂注册模式（详见 Build1.md）
+- 桌面端系统托盘代码通过 `//go:build desktop` 标签隔离
 
-```
-host|protocol|ports|action[|comment];host|protocol|ports|action[|comment];...
-```
+---
 
-- `host`: 域名（如 `api.example.com`）
-- `protocol`: `TCP` / `UDP` / `TCP+UDP`
-- `ports`: 逗号分隔端口号（如 `443,80`）或 `ALL`（所有端口，遵循腾讯云 API 规范）
-- `action`: `ACCEPT` / `DROP`
-- `comment`: 可选备注，写入 `FirewallRuleDescription`，用于人类识别（腾讯云 API 限制 ≤ 64 字节，超出自动截断；请勿使用超长 RULE_TAG 或域名，避免截断异常）
+## 十二、文档体系
 
-示例：
-```
-DOMAIN_RULES=api.example.com|TCP|443,80|ACCEPT|生产API;cdn.example.com|TCP|443|ACCEPT
-```
-
-## 项目结构
-
-```
-TencentCloudFirewallTool/
-├── .env.example                 # 配置模板
-├── .gitignore
-├── AGENTS.md                    # 本文件
-├── Dockerfile
-├── Makefile
-├── README.md
-├── go.mod
-├── go.sum
-├── main.go                      # 入口
-├── .github/
-│   └── workflows/
-│       └── docker-publish.yml   # CI/CD
-├── config/
-│   └── config.go                # .env 解析与校验
-├── dns/
-│   └── resolver.go              # DNS 解析（自定义服务器）
-├── firewall/
-│   ├── client.go                # Lighthouse SDK 封装
-│   ├── rule.go                  # 规则对比 & diff 逻辑
-│   └── sync.go                  # 同步调度主循环├── TencentAPIGuide/             # 腾讯云 Lighthouse API & Go SDK 官方文档└── Ref/                         # API 文档 & SDK 参考
-    └── tencentcloud-sdk-go/     # 腾讯云 Go SDK（本地克隆）
-```
-
-## 开发约定
-
-- **模块路径**：`github.com/alcaprophet/fwalizer`（GitHub 仓库地址）
-- **Go 版本**：`go 1.25`
-- **SDK 依赖**：`github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse`
-- **无外部框架依赖**：不使用 gin/echo 等 HTTP 框架，不使用 cron 库，尽量用标准库
-- **所有错误必须处理**，不可忽略 `error` 返回值
-- **日志使用 `log/slog`**（Go 1.21+ 内置结构化日志）
-- **注释使用中文**（面向国内开发者）
-- **API 调用需遵守 `TencentAPIGuide/` 中的官方文档要求**（参数格式、字段长度限制、频率限制等）
+| 文档 | 目标读者 | 内容 |
+|------|---------|------|
+| [Design1.md](./Design1.md) | 人类（开发者/用户） | 架构设计、需求、决策、路线图 |
+| [Build1.md](./Build1.md) | 开发者 | 技术实现细节、代码参考 |
+| AGENTS.md（本文件） | AI 编码助手 | 编码指令与约束 |
