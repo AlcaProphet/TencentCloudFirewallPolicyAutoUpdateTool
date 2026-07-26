@@ -430,6 +430,82 @@ return http.ListenAndServe(addr, s.mux)
 
 ---
 
+## 5. 补充修复（二次检查发现）
+
+### [UI-10] 全局设置 TAG/间隔/DNS 仍为 placeholder 形式
+
+- **严重度：** 低
+- **当前状态：** ✅ 已修复
+- **所属模块：** WebUI 前端 / 全局设置
+- **涉及文件：** `webui/frontend/src/views/Settings.vue`
+- **原始记录：** [UI-03] 补充修复
+
+**现象描述：** [UI-03] 修复后 `GET /api/settings` 已返回默认值（`tag: "auto-dns"`、`interval: "5m"`、`dns: "223.5.5.5"`），输入框通过 `v-model` 绑定了实际值，但 `placeholder` 属性仍然保留。当值已预填时 placeholder 不会显示，属于冗余代码；且用户反馈视觉上仍像“占位提示”而非实际值。
+
+**修复方案（已实施）：** 移除 TAG、同步间隔、DNS 服务器三个 `NInput` 的 `placeholder` 属性，输入框仅显示 API 返回的实际值。
+
+---
+
+### [UI-11] 时间应显示本地时区而非固定 UTC
+
+- **严重度：** 中
+- **当前状态：** ✅ 已修复
+- **所属模块：** WebUI 前端 / 同步日志
+- **涉及文件：** `webui/frontend/src/views/Logs.vue`
+- **原始记录：** [UI-05] 补充修复
+
+**现象描述：** [UI-05] 修复后时间显示为 `2026-07-26 11:51:37 UTC`（固定 UTC 时区），用户期望显示为本地时区时间（自动检测系统时区），格式如 `2026-07-26 19:51:37 UTC+08:00`。
+
+**修复方案（已实施）：** `formatTime()` 改为使用 `Date` 本地时间 + `getTimezoneOffset()` 自动检测时区偏移：
+
+```typescript
+function formatTime(ts: string): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ts
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const offset = -d.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const tzStr = `UTC${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${tzStr}`
+}
+```
+
+列标题从 `时间 (UTC)` 改为 `时间`。
+
+---
+
+### [UI-12] 同步日志目标字段应仅显示资源 ID
+
+- **严重度：** 中
+- **当前状态：** ✅ 已修复
+- **所属模块：** WebUI API / 同步日志
+- **涉及文件：** `webui/api/logwriter.go`
+- **原始记录：** [UI-06] 补充修复
+
+**现象描述：** [UI-06] 修复后同步日志的 `target` 字段有数据，但显示为 Provider 的完整 `Name()` 格式（如 `tc_lighthouse(lhins-3j99jcrw)`），包含云厂商前缀和括号包裹。用户期望仅显示资源 ID（如 `lhins-3j99jcrw`）。
+
+**原因分析：** `syncer.go` 发布事件时 `Data["provider"] = p.Name()`，而 `Name()` 返回格式为 `cloudtype(resourceid)`（四个 Provider 均如此）。logwriter 直接存储了完整字符串。
+
+**修复方案（已实施）：** 在 `logwriter.go` 提取 provider 字段时，解析括号内的资源 ID：
+
+```go
+if v, ok := event.Data["provider"].(string); ok {
+    // 提取资源 ID：从 "tc_lighthouse(lhins-xxx)" 格式中取括号内部分
+    if start := strings.Index(v, "("); start >= 0 {
+        if end := strings.Index(v, ")"); end > start {
+            log.Target = v[start+1 : end]
+        } else {
+            log.Target = v
+        }
+    } else {
+        log.Target = v
+    }
+}
+```
+
+---
+
 # 汇总表
 
 ## 按严重度统计
@@ -437,9 +513,9 @@ return http.ListenAndServe(addr, s.mux)
 | 严重度 | 数量 | 编号 |
 |--------|------|------|
 | 高 | 1 | [UI-06] |
-| 中 | 5 | [UI-02]、[UI-03]、[UI-05]、[UI-07]、[UI-08] |
-| 低 | 3 | [UI-01]、[UI-04]、[UI-09] |
-| **合计** | **9** | |
+| 中 | 7 | [UI-02]、[UI-03]、[UI-05]、[UI-07]、[UI-08]、[UI-11]、[UI-12] |
+| 低 | 4 | [UI-01]、[UI-04]、[UI-09]、[UI-10] |
+| **合计** | **12** | |
 
 ## 优先修复建议
 

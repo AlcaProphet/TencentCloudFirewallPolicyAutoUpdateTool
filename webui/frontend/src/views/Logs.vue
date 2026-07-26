@@ -8,12 +8,16 @@ const logLines = ref<string[]>([])
 let es: EventSource | null = null
 let logEs: EventSource | null = null
 
-// ─── 时间格式化（UTC） ───
+// ─── 时间格式化（本地时区，自动检测） ───
 function formatTime(ts: string): string {
   if (!ts) return '-'
   const d = new Date(ts)
   if (isNaN(d.getTime())) return ts
-  return d.toISOString().replace('T', ' ').substring(0, 19) + ' UTC'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const offset = -d.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const tzStr = `UTC${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${tzStr}`
 }
 
 // ─── 事件类型映射 ───
@@ -77,7 +81,7 @@ onUnmounted(() => {
 
 // ─── 历史记录列 ───
 const columns = [
-  { title: '时间 (UTC)', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
+  { title: '时间', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
   { title: '目标', key: 'target' },
   { title: '域名', key: 'domain' },
   {
@@ -94,7 +98,7 @@ const columns = [
 
 // ─── 实时事件列 ───
 const eventColumns = [
-  { title: '时间 (UTC)', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
+  { title: '时间', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
   {
     title: '事件', key: 'type',
     render(row: any) {

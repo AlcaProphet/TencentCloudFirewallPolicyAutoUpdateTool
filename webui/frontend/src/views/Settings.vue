@@ -70,13 +70,13 @@ async function importConfig(e: Event) {
 
       <h3 style="margin: 16px 0 12px">全局设置</h3>
       <NFormItem label="TAG">
-        <NInput v-model:value="settings.tag" placeholder="auto-dns" />
+        <NInput v-model:value="settings.tag" />
       </NFormItem>
       <NFormItem label="同步间隔">
-        <NInput v-model:value="settings.interval" placeholder="5m" />
+        <NInput v-model:value="settings.interval" />
       </NFormItem>
       <NFormItem label="DNS 服务器">
-        <NInput v-model:value="settings.dns" placeholder="223.5.5.5" />
+        <NInput v-model:value="settings.dns" />
       </NFormItem>
       <NFormItem label="日志级别">
         <NSelect v-model:value="settings.log_level" :options="[
