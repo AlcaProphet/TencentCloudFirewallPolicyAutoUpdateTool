@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NForm, NFormItem, NInput, NButton, NSpace, useMessage } from 'naive-ui'
+import { NForm, NFormItem, NInput, NSelect, NButton, NSpace, useMessage } from 'naive-ui'
 import { ref, onMounted } from 'vue'
 
 const settings = ref<Record<string, string>>({})
@@ -76,10 +76,15 @@ async function importConfig(e: Event) {
         <NInput v-model:value="settings.interval" placeholder="5m" />
       </NFormItem>
       <NFormItem label="DNS 服务器">
-        <NInput v-model:value="settings.dns" placeholder="8.8.8.8:53" />
+        <NInput v-model:value="settings.dns" placeholder="223.5.5.5" />
       </NFormItem>
       <NFormItem label="日志级别">
-        <NInput v-model:value="settings.log_level" placeholder="info" />
+        <NSelect v-model:value="settings.log_level" :options="[
+          { label: 'Debug', value: 'debug' },
+          { label: 'Info', value: 'info' },
+          { label: 'Warn', value: 'warn' },
+          { label: 'Error', value: 'error' },
+        ]" />
       </NFormItem>
       <NFormItem>
         <NSpace>

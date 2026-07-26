@@ -23,10 +23,11 @@ type EventSubscriber interface {
 
 // Deps API handler 共享依赖
 type Deps struct {
-	Store      *config.Store
-	Syncer     Syncer          // 可为 nil（无配置时）
-	EventBus   EventSubscriber // 可为 nil
-	ReloadFunc func()
+	Store        *config.Store
+	Syncer       Syncer          // 可为 nil（无配置时）
+	EventBus     EventSubscriber // 可为 nil
+	LogBroadcaster *LogBroadcaster // 可为 nil
+	ReloadFunc   func()
 }
 
 // Register 注册所有 API 路由到 mux
@@ -48,6 +49,8 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sync/dryrun", d.handleSyncDryRun)
 	mux.HandleFunc("GET /api/sync/events", d.handleSyncEvents)
 	mux.HandleFunc("GET /api/sync/logs", d.handleGetSyncLogs)
+	// 实时日志流
+	mux.HandleFunc("GET /api/logs/stream", d.handleLogStream)
 	// 设置 + 配置导入导出
 	mux.HandleFunc("GET /api/settings", d.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", d.handlePutSettings)

@@ -28,7 +28,13 @@ func (w *StoreLogWriter) OnEvent(event notifier.Event) error {
 			log.Error = v
 		}
 	case notifier.EventSyncComplete:
+		// 跳过全局完成事件（不携带 provider），仅记录逐域名事件
+		if log.Target == "" {
+			return nil
+		}
 		log.Result = "success"
+	default:
+		return nil
 	}
 	if err := w.Store.AddSyncLog(log); err != nil {
 		slog.Warn("写入同步日志失败", "error", err)

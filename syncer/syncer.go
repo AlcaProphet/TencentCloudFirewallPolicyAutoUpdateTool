@@ -261,6 +261,12 @@ func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
 	}
 
 	slog.Info("同步完成", "provider", p.Name(), "domain", rule.Host)
+	// 发布逐域名同步成功事件（携带 provider + domain，供日志写入）
+	s.bus.Publish(notifier.Event{
+		Type:      notifier.EventSyncComplete,
+		Timestamp: time.Now(),
+		Data:      map[string]any{"provider": p.Name(), "domain": rule.Host},
+	})
 }
 
 func (s *Syncer) groupByCloud() map[config.CloudType][]provider.Provider {

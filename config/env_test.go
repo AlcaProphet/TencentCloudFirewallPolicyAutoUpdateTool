@@ -104,8 +104,8 @@ RULES=a.com|TCP|80|ACCEPT
 	if cfg.Tag != "auto-dns" {
 		t.Errorf("Tag = %s, want auto-dns", cfg.Tag)
 	}
-	if cfg.DNS != "8.8.8.8:53" {
-		t.Errorf("DNS = %s, want 8.8.8.8:53", cfg.DNS)
+	if cfg.DNS != "223.5.5.5" {
+		t.Errorf("DNS = %s, want 223.5.5.5", cfg.DNS)
 	}
 	if cfg.Interval != 5*time.Minute {
 		t.Errorf("Interval = %v, want 5m", cfg.Interval)

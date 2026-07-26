@@ -15,6 +15,18 @@ func (d *Deps) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// 填充默认值（仅当 key 不存在时），使前端能显示当前生效配置
+	defaults := map[string]string{
+		"tag":       "auto-dns",
+		"interval":  "5m",
+		"dns":       "223.5.5.5",
+		"log_level": "info",
+	}
+	for k, v := range defaults {
+		if _, exists := settings[k]; !exists {
+			settings[k] = v
+		}
+	}
 	writeJSON(w, http.StatusOK, settings)
 }
 

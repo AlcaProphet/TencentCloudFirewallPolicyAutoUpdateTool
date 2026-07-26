@@ -58,11 +58,13 @@ func main() {
 			os.Exit(1)
 		}
 
-		// 初始化日志
-		app.InitLogger(cfg.LogLevel)
+		// 初始化日志（同时输出到 stdout 和 WebUI 日志流）
+		logBroadcaster := webapi.NewLogBroadcaster()
+		app.InitLoggerWithBroadcaster(cfg.LogLevel, logBroadcaster)
 
 		// 启动 WebUI 服务器
 		srv := webui.NewServer(store, cfg.WebUIPort)
+		srv.SetLogBroadcaster(logBroadcaster)
 
 		// 创建同步引擎（初始 Provider 可为空，等待用户通过 WebUI 配置后热重载生效）
 		provider.SetCredentials(cfg.TCAccessID, cfg.TCAccessKey, cfg.AliAccessID, cfg.AliAccessKey)

@@ -27,7 +27,7 @@ func ParseEnv(content string) (*Config, error) {
 	// 3. 构建 Config
 	cfg := &Config{
 		Tag:              getOr(kv, "TAG", "auto-dns"),
-		DNS:              getOr(kv, "DNS", "8.8.8.8:53"),
+		DNS:              getOr(kv, "DNS", "223.5.5.5"),
 		LogLevel:         getOr(kv, "LOG_LEVEL", "info"),
 		DNSTimeout:       10 * time.Second,
 		DNSFailThreshold: 5,

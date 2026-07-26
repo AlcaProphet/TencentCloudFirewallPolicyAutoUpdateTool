@@ -65,9 +65,13 @@ async function testConnection() {
   testResult.value = data.success ? data.message : `失败: ${data.error}`
 }
 
+const cloudLabelMap: Record<string, string> = Object.fromEntries(
+  cloudOptions.map(o => [o.value, o.label])
+)
+
 const columns = [
   { title: '#', key: 'index', render: (_: any, i: number) => i + 1 },
-  { title: '云产品', key: 'cloud_type' },
+  { title: '云产品', key: 'cloud_type', render: (row: any) => cloudLabelMap[row.cloud_type] || row.cloud_type },
   { title: '资源ID', key: 'resource_id' },
   { title: '地域', key: 'region' },
   {

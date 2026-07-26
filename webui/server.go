@@ -41,10 +41,15 @@ func (s *Server) SetReloadFunc(fn func()) {
 	s.deps.ReloadFunc = fn
 }
 
+// SetLogBroadcaster 设置日志广播器（实时日志流 SSE）
+func (s *Server) SetLogBroadcaster(b *api.LogBroadcaster) {
+	s.deps.LogBroadcaster = b
+}
+
 // Start 启动 HTTP 服务器（阻塞）
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
-	slog.Info("WebUI 启动", "addr", addr)
+	slog.Info("WebUI 启动", "访问地址", "http://"+addr)
 	return http.ListenAndServe(addr, s.mux)
 }
 

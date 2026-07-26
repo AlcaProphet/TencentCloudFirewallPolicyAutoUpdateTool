@@ -328,7 +328,7 @@ func (s *Store) LoadConfig() (*Config, error) {
 		DomainRules:      rules,
 		Tag:              "auto-dns",
 		Interval:         5 * time.Minute,
-		DNS:              "8.8.8.8:53",
+		DNS:              "223.5.5.5",
 		DNSTimeout:       10 * time.Second,
 		DNSFailThreshold: 5,
 		LogLevel:         "info",
