@@ -131,7 +131,7 @@ func (s *Store) GetTargets() ([]TargetConfig, error) {
 	}
 	defer rows.Close()
 
-	var targets []TargetConfig
+	targets := make([]TargetConfig, 0)
 	for rows.Next() {
 		var t TargetConfig
 		var ct string
@@ -167,7 +167,7 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 	}
 	defer rows.Close()
 
-	var rules []DomainRule
+	rules := make([]DomainRule, 0)
 	for rows.Next() {
 		var r DomainRule
 		var targets string
@@ -284,7 +284,7 @@ func (s *Store) GetSyncLogs(limit int) ([]SyncLog, error) {
 	}
 	defer rows.Close()
 
-	var logs []SyncLog
+	logs := make([]SyncLog, 0)
 	for rows.Next() {
 		var l SyncLog
 		if err := rows.Scan(&l.Timestamp, &l.Target, &l.Domain, &l.Result, &l.Added, &l.Deleted, &l.Error); err != nil {

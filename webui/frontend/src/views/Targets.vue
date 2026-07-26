@@ -5,7 +5,7 @@ import { ref, onMounted, h } from 'vue'
 const targets = ref<any[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
-const form = ref({ CloudType: 'tc_lighthouse', Region: '', ResourceID: '' })
+const form = ref({ cloud_type: 'tc_lighthouse', region: '', resource_id: '' })
 const testResult = ref('')
 const message = useMessage()
 
@@ -25,13 +25,13 @@ onMounted(load)
 
 function openAdd() {
   editingId.value = null
-  form.value = { CloudType: 'tc_lighthouse', Region: '', ResourceID: '' }
+  form.value = { cloud_type: 'tc_lighthouse', region: '', resource_id: '' }
   showModal.value = true
 }
 
 function openEdit(row: any, index: number) {
   editingId.value = index + 1
-  form.value = { CloudType: row.CloudType, Region: row.Region, ResourceID: row.ResourceID }
+  form.value = { cloud_type: row.cloud_type, region: row.region, resource_id: row.resource_id }
   showModal.value = true
 }
 
@@ -41,7 +41,7 @@ async function saveTarget() {
   await fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(form.value),
+    body: JSON.stringify({ cloud_type: form.value.cloud_type, region: form.value.region, resource_id: form.value.resource_id }),
   })
   showModal.value = false
   message.success(editingId.value ? '更新成功' : '添加成功')
@@ -59,7 +59,7 @@ async function testConnection() {
   const res = await fetch('/api/test-connection', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cloud_type: form.value.CloudType, region: form.value.Region, resource_id: form.value.ResourceID }),
+    body: JSON.stringify({ cloud_type: form.value.cloud_type, region: form.value.region, resource_id: form.value.resource_id }),
   })
   const data = await res.json()
   testResult.value = data.success ? data.message : `失败: ${data.error}`
@@ -67,9 +67,9 @@ async function testConnection() {
 
 const columns = [
   { title: '#', key: 'index', render: (_: any, i: number) => i + 1 },
-  { title: '云产品', key: 'CloudType' },
-  { title: '资源ID', key: 'ResourceID' },
-  { title: '地域', key: 'Region' },
+  { title: '云产品', key: 'cloud_type' },
+  { title: '资源ID', key: 'resource_id' },
+  { title: '地域', key: 'region' },
   {
     title: '操作', key: 'actions',
     render(row: any, index: number) {
@@ -95,13 +95,13 @@ const columns = [
     <NModal v-model:show="showModal" :title="editingId ? '编辑目标' : '添加目标'" preset="card" style="width: 500px">
       <NForm :model="form" label-placement="left" label-width="80">
         <NFormItem label="云产品">
-          <NSelect v-model:value="form.CloudType" :options="cloudOptions" />
+          <NSelect v-model:value="form.cloud_type" :options="cloudOptions" />
         </NFormItem>
         <NFormItem label="资源ID">
-          <NInput v-model:value="form.ResourceID" placeholder="lhins-xxx / sg-xxx" />
+          <NInput v-model:value="form.resource_id" placeholder="lhins-xxx / sg-xxx" />
         </NFormItem>
         <NFormItem label="地域">
-          <NInput v-model:value="form.Region" placeholder="ap-guangzhou" />
+          <NInput v-model:value="form.region" placeholder="ap-guangzhou" />
         </NFormItem>
         <NSpace>
           <NButton type="primary" @click="saveTarget">保存</NButton>

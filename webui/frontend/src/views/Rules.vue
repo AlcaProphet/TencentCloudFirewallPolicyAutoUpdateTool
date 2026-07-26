@@ -5,7 +5,7 @@ import { ref, onMounted, h } from 'vue'
 const rules = ref<any[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
-const form = ref({ Host: '', Protocol: 'TCP', Ports: '', Action: 'ACCEPT', Comment: '' })
+const form = ref({ host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '' })
 const message = useMessage()
 
 const protocolOptions = [
@@ -29,13 +29,13 @@ onMounted(load)
 
 function openAdd() {
   editingId.value = null
-  form.value = { Host: '', Protocol: 'TCP', Ports: '', Action: 'ACCEPT', Comment: '' }
+  form.value = { host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '' }
   showModal.value = true
 }
 
 function openEdit(row: any, index: number) {
   editingId.value = index + 1
-  form.value = { Host: row.Host, Protocol: row.Protocol, Ports: row.Ports, Action: row.Action, Comment: row.Comment || '' }
+  form.value = { host: row.host, protocol: row.protocol, ports: row.ports, action: row.action, comment: row.comment || '' }
   showModal.value = true
 }
 
@@ -60,11 +60,11 @@ async function deleteRule(index: number) {
 
 const columns = [
   { title: '#', key: 'index', render: (_: any, i: number) => i + 1 },
-  { title: '域名', key: 'Host' },
-  { title: '协议', key: 'Protocol' },
-  { title: '端口', key: 'Ports' },
-  { title: '动作', key: 'Action' },
-  { title: '备注', key: 'Comment' },
+  { title: '域名', key: 'host' },
+  { title: '协议', key: 'protocol' },
+  { title: '端口', key: 'ports' },
+  { title: '动作', key: 'action' },
+  { title: '备注', key: 'comment' },
   {
     title: '操作', key: 'actions',
     render(row: any, index: number) {
@@ -90,19 +90,19 @@ const columns = [
     <NModal v-model:show="showModal" :title="editingId ? '编辑规则' : '添加规则'" preset="card" style="width: 500px">
       <NForm :model="form" label-placement="left" label-width="60">
         <NFormItem label="域名">
-          <NInput v-model:value="form.Host" placeholder="api.example.com" />
+          <NInput v-model:value="form.host" placeholder="api.example.com" />
         </NFormItem>
         <NFormItem label="协议">
-          <NSelect v-model:value="form.Protocol" :options="protocolOptions" />
+          <NSelect v-model:value="form.protocol" :options="protocolOptions" />
         </NFormItem>
         <NFormItem label="端口">
-          <NInput v-model:value="form.Ports" placeholder="443,80 / 8000-8010 / ALL" />
+          <NInput v-model:value="form.ports" placeholder="443,80 / 8000-8010 / ALL" />
         </NFormItem>
         <NFormItem label="动作">
-          <NSelect v-model:value="form.Action" :options="actionOptions" />
+          <NSelect v-model:value="form.action" :options="actionOptions" />
         </NFormItem>
         <NFormItem label="备注">
-          <NInput v-model:value="form.Comment" placeholder="可选" />
+          <NInput v-model:value="form.comment" placeholder="可选" />
         </NFormItem>
         <NButton type="primary" @click="saveRule">保存</NButton>
       </NForm>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider } from 'naive-ui'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider, NMessageProvider } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import { ref } from 'vue'
 
@@ -22,18 +22,20 @@ function handleMenuUpdate(key: string) {
 
 <template>
   <NConfigProvider>
-    <NLayout has-sider style="height: 100vh">
-      <NLayoutSider bordered :width="200">
-        <div style="padding: 16px; font-weight: bold; font-size: 18px">FWAlizer</div>
-        <NMenu
-          :value="activeKey"
-          :options="menuOptions"
-          @update:value="handleMenuUpdate"
-        />
-      </NLayoutSider>
-      <NLayoutContent content-style="padding: 24px;">
-        <router-view />
-      </NLayoutContent>
-    </NLayout>
+    <NMessageProvider>
+      <NLayout has-sider style="height: 100vh">
+        <NLayoutSider bordered :width="200">
+          <div style="padding: 16px; font-weight: bold; font-size: 18px">FWAlizer</div>
+          <NMenu
+            :value="activeKey"
+            :options="menuOptions"
+            @update:value="handleMenuUpdate"
+          />
+        </NLayoutSider>
+        <NLayoutContent content-style="padding: 24px;">
+          <router-view />
+        </NLayoutContent>
+      </NLayout>
+    </NMessageProvider>
   </NConfigProvider>
 </template>
