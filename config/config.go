@@ -44,13 +44,14 @@ type TargetConfig struct {
 
 // DomainRule 域名规则配置（RULES 解析结果）
 type DomainRule struct {
-	ID       int    `json:"id"`
-	Host     string `json:"host"`
-	Protocol string `json:"protocol"` // TCP / UDP / TCP+UDP / ICMP
-	Ports    string `json:"ports"`    // 单端口、逗号分隔、范围、ALL
-	Action   string `json:"action"`   // ACCEPT / DROP
-	Targets  []int  `json:"targets"`  // 目标编号（空 = 全部）
-	Comment  string `json:"comment"`
+	ID         int    `json:"id"`
+	Host       string `json:"host"`
+	Protocol   string `json:"protocol"`    // TCP / UDP / TCP+UDP / ICMP
+	Ports      string `json:"ports"`       // 单端口、逗号分隔、范围、ALL
+	Action     string `json:"action"`      // ACCEPT / DROP
+	Targets    []int  `json:"targets"`     // 目标编号（空 = 全部）
+	Comment    string `json:"comment"`
+	EnableIPv6 bool   `json:"enable_ipv6"` // 是否解析 AAAA 记录，默认 false
 }
 
 // Config 全局配置

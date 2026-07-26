@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, useMessage } from 'naive-ui'
+import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
 import { ref, onMounted, h } from 'vue'
 
 const rules = ref<any[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
-const form = ref({ host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '' })
+const form = ref({ host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false })
 const message = useMessage()
 
 const protocolOptions = [
@@ -29,13 +29,13 @@ onMounted(load)
 
 function openAdd() {
   editingId.value = null
-  form.value = { host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '' }
+  form.value = { host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false }
   showModal.value = true
 }
 
 function openEdit(row: any, index: number) {
   editingId.value = index + 1
-  form.value = { host: row.host, protocol: row.protocol, ports: row.ports, action: row.action, comment: row.comment || '' }
+  form.value = { host: row.host, protocol: row.protocol, ports: row.ports, action: row.action, comment: row.comment || '', enable_ipv6: !!row.enable_ipv6 }
   showModal.value = true
 }
 
@@ -64,6 +64,12 @@ const columns = [
   { title: '协议', key: 'protocol' },
   { title: '端口', key: 'ports' },
   { title: '动作', key: 'action' },
+  {
+    title: 'IP版本', key: 'enable_ipv6',
+    render(row: any) {
+      return h(NTag, { size: 'small', type: row.enable_ipv6 ? 'info' : 'default' }, { default: () => row.enable_ipv6 ? 'IPv4+6' : '仅IPv4' })
+    }
+  },
   { title: '备注', key: 'comment' },
   {
     title: '操作', key: 'actions',
@@ -103,6 +109,10 @@ const columns = [
         </NFormItem>
         <NFormItem label="备注">
           <NInput v-model:value="form.comment" placeholder="可选" />
+        </NFormItem>
+        <NFormItem label="解析IPv6">
+          <NSwitch v-model:value="form.enable_ipv6" />
+          <span style="margin-left: 8px; font-size: 12px; color: #999">{{ form.enable_ipv6 ? '同时使用 A + AAAA 记录' : '仅使用 A 记录（IPv4）' }}</span>
         </NFormItem>
         <NButton type="primary" @click="saveRule">保存</NButton>
       </NForm>

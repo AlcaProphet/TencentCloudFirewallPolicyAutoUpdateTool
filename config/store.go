@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS rules (
 	ports TEXT NOT NULL,
 	action TEXT NOT NULL DEFAULT 'ACCEPT',
 	targets TEXT DEFAULT '',
-	comment TEXT DEFAULT ''
+	comment TEXT DEFAULT '',
+	enable_ipv6 INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS settings (
 	key TEXT PRIMARY KEY,
@@ -92,6 +93,8 @@ CREATE TABLE IF NOT EXISTS sync_logs (
 	if err != nil {
 		return fmt.Errorf("初始化表结构失败: %w", err)
 	}
+	// 迁移：为已有 rules 表补充 enable_ipv6 列（忽略“列已存在”错误）
+	s.db.Exec("ALTER TABLE rules ADD COLUMN enable_ipv6 INTEGER DEFAULT 0")
 	return nil
 }
 
@@ -161,7 +164,7 @@ func (s *Store) DeleteTarget(id int) error {
 
 // GetRules 获取所有域名规则
 func (s *Store) GetRules() ([]DomainRule, error) {
-	rows, err := s.db.Query("SELECT id, host, protocol, ports, action, targets, comment FROM rules ORDER BY id")
+	rows, err := s.db.Query("SELECT id, host, protocol, ports, action, targets, comment, enable_ipv6 FROM rules ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +174,8 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 	for rows.Next() {
 		var r DomainRule
 		var targets string
-		if err := rows.Scan(&r.ID, &r.Host, &r.Protocol, &r.Ports, &r.Action, &targets, &r.Comment); err != nil {
+		var enableIPv6 int
+		if err := rows.Scan(&r.ID, &r.Host, &r.Protocol, &r.Ports, &r.Action, &targets, &r.Comment, &enableIPv6); err != nil {
 			return nil, err
 		}
 		if targets != "" {
@@ -180,6 +184,7 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 				r.Targets = nums
 			}
 		}
+		r.EnableIPv6 = enableIPv6 != 0
 		rules = append(rules, r)
 	}
 	return rules, rows.Err()
@@ -188,9 +193,13 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 // AddRule 添加域名规则
 func (s *Store) AddRule(r DomainRule) error {
 	targetsJSON, _ := json.Marshal(r.Targets)
+	enableIPv6 := 0
+	if r.EnableIPv6 {
+		enableIPv6 = 1
+	}
 	_, err := s.db.Exec(
-		"INSERT INTO rules (host, protocol, ports, action, targets, comment) VALUES (?, ?, ?, ?, ?, ?)",
-		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment,
+		"INSERT INTO rules (host, protocol, ports, action, targets, comment, enable_ipv6) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6,
 	)
 	return err
 }
@@ -213,9 +222,13 @@ func (s *Store) UpdateTarget(id int, t TargetConfig) error {
 // UpdateRule 更新域名规则
 func (s *Store) UpdateRule(id int, r DomainRule) error {
 	targetsJSON, _ := json.Marshal(r.Targets)
+	enableIPv6 := 0
+	if r.EnableIPv6 {
+		enableIPv6 = 1
+	}
 	_, err := s.db.Exec(
-		"UPDATE rules SET host = ?, protocol = ?, ports = ?, action = ?, targets = ?, comment = ? WHERE id = ?",
-		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, id,
+		"UPDATE rules SET host = ?, protocol = ?, ports = ?, action = ?, targets = ?, comment = ?, enable_ipv6 = ? WHERE id = ?",
+		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6, id,
 	)
 	return err
 }

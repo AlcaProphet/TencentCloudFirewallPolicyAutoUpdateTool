@@ -156,6 +156,9 @@ func (s *Syncer) DryRun() ([]DryRunResult, error) {
 				results = append(results, result)
 				continue
 			}
+			if !rule.EnableIPv6 {
+				resolved = filterIPv4(resolved)
+			}
 
 			allRules, err := p.GetRules()
 			if err != nil {
@@ -241,6 +244,11 @@ func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
 	}
 	s.cb.RecordSuccess(rule.Host)
 
+	// 1.5 按规则配置过滤 IPv6 地址
+	if !rule.EnableIPv6 {
+		resolved = filterIPv4(resolved)
+	}
+
 	// 2. 带重试的完整同步流程（Describe → Diff → Create/Delete）
 	if err := s.retrySync(p, rule, resolved); err != nil {
 		slog.Error("同步失败", "provider", p.Name(), "domain", rule.Host, "error", err)
@@ -280,6 +288,17 @@ func filterRulesForTarget(rules []config.DomainRule, targetDBID int) []config.Do
 		}
 	}
 	return filtered
+}
+
+// filterIPv4 仅保留 IPv4 地址（禁用 IPv6 解析时使用）
+func filterIPv4(ips []dns.ResolvedIP) []dns.ResolvedIP {
+	var v4 []dns.ResolvedIP
+	for _, ip := range ips {
+		if !ip.IsIPv6 {
+			v4 = append(v4, ip)
+		}
+	}
+	return v4
 }
 
 // WaitForSignal 等待停止信号，并等待 Run 完全退出（确保当前轮次完成）
