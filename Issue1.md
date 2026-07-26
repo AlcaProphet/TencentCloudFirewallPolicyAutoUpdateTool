@@ -596,19 +596,54 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 
 ### [WEB-07] 前端 JSON 字段命名风格不统一
 
-- **严重度：** 低
-- **当前状态：** ✅ 已裁定-保持现状
+- **严重度：** 中（原标记为低，因实际导致页面空白 Bug 上调）
+- **当前状态：** ✅ 已修复
 - **所属模块：** WebUI 前端 + API
 - **涉及文件：** `webui/frontend/src/views/Targets.vue`、`Rules.vue`
+- **修复说明：** 前端 Targets.vue 和 Rules.vue 全部字段统一为 snake_case（与后端 JSON tag 一致）；App.vue 补充 `NMessageProvider`；store.go 空数据返回 `[]` 而非 `null`。前端 dist 已重新构建，`go build ./...` 和 `go vet ./...` 通过。
 - **原始记录：** Issue 6.5（第 8 轮）
 
-**现象描述：** 前端表单使用 Go 结构体字段名（PascalCase，如 `CloudType`、`ResourceID`）作为 JSON key，而部分 API 使用 snake_case（如 `testConnectionReq` 的 `json:"cloud_type"` tag）。Go `encoding/json` 对无 tag 字段做大小写不敏感匹配，当前能正常工作，但 API 风格不统一。
+**现象描述：** 前端表单使用 Go 结构体字段名（PascalCase，如 `CloudType`、`ResourceID`）作为 JSON key，后端结构体使用 snake_case json tag（`cloud_type`、`resource_id`）。
 
-**推荐修复方案：**
-- 方案 A：统一为 snake_case + json tag（规范）
-- 方案 B（推荐）：保持现状（内部工具，功能正常即可）
+**原裁定（已推翻）：** 原选方案 B"保持现状"，理由为"Go `encoding/json` 大小写不敏感匹配确保功能正常"。
 
-**最终裁定：** 选方案 B。保持现状不做修改。理由：Go `encoding/json` 大小写不敏感匹配确保功能正常；统一风格需同时改动前后端，风险高于收益；内部工具不过度设计。
+**裁定推翻原因：** 原裁定基于错误前提。Go `encoding/json` 的大小写不敏感匹配仅在 JSON key 与 tag/字段名**仅存在大小写差异**时生效（如 `cloudtype` ↔ `CloudType`）。而 `CloudType` vs `cloud_type` 存在**下划线结构性差异**，大小写不敏感匹配无法弥补，导致：
+- 读取方向：API 返回 `{"cloud_type": "tc_lighthouse"}` → 前端按 `row.CloudType` 取值 → `undefined` → 表格全空
+- 写入方向：前端提交 `{"CloudType": "..."}` → 后端按 tag `cloud_type` 解码 → 无法映射 → 入库字段全为空
+
+**最终修复：** 选方案 A。前端统一为 snake_case，与后端 API 风格一致（Dashboard.vue 和 Logs.vue 已使用 snake_case，修复后五个页面风格统一）。
+
+---
+
+### [WEB-08] WebUI 三个页面空白（Targets / Rules / Settings）
+
+- **严重度：** 高
+- **当前状态：** ✅ 已修复
+- **所属模块：** WebUI 前端 + 配置持久化
+- **涉及文件：** `webui/frontend/src/views/Targets.vue`、`Rules.vue`、`App.vue`、`config/store.go`
+- **修复说明：** 三部分联动修复：① 前端字段名统一为 snake_case（根因，即 [WEB-07]）；② App.vue 添加 `<NMessageProvider>` 包裹（`useMessage()` 无 Provider 时返回 undefined，点击保存/删除触发 TypeError）；③ `store.go` 的 `GetTargets()`/`GetRules()`/`GetSyncLogs()` 初始化空切片（空库时 API 返回 `[]` 而非 `null`）。前端 dist 已重新构建，`vue-tsc` + `vite build` + `go build ./...` + `go vet ./...` 全部通过。
+- **原始记录：** 用户报告（WebUI 页面空白排查）
+
+**现象描述：** 访问 `http://127.0.0.1:9090/` 后，"云资源管理"（/targets）、"域名规则"（/rules）和"全局设置"（/settings）三个页面内容区域空白，仪表盘和同步日志页面正常。
+
+**原因分析（三层问题叠加）：**
+
+1. **JSON 字段名不匹配（根因）**：后端 `TargetConfig`/`DomainRule` 的 json tag 为 snake_case，前端表格列 key 和表单字段使用 PascalCase。NDataTable 按 `row.CloudType` 等取值全部为 `undefined`，表格渲染为空行；新增/编辑提交时后端无法解码 PascalCase 请求体，入库字段全为空。
+2. **缺少 `NMessageProvider`**：Targets.vue 和 Rules.vue 调用 `useMessage()`，但 App.vue 未包裹 `<NMessageProvider>`。Naive UI 在无 Provider 时返回 `undefined`，用户点击保存/删除时 `message.success()` 抛出 TypeError，操作无反馈。
+3. **nil slice 序列化为 `null`**：`store.go` 中 `var targets []TargetConfig`（nil slice）在空库时 JSON 输出 `null` 而非 `[]`。前端虽有 `|| []` 兜底，但属于隐患。
+
+**影响范围：** Targets 和 Rules 页面完全不可用（数据不显示 + 写入空记录）；Settings 页面功能正常但空库时表单为空（预期行为）。
+
+**修复方案（已实施）：**
+
+| 文件 | 修改内容 |
+|------|----------|
+| `Targets.vue` | 表单/列 key/编辑回填全部改为 `cloud_type`、`region`、`resource_id` |
+| `Rules.vue` | 表单/列 key/编辑回填全部改为 `host`、`protocol`、`ports`、`action`、`comment` |
+| `App.vue` | 导入并包裹 `<NMessageProvider>`（位于 `NConfigProvider` 内层） |
+| `config/store.go` | `GetTargets()`/`GetRules()`/`GetSyncLogs()` 使用 `make([]T, 0)` 初始化 |
+
+**注意事项：** 修复前通过 WebUI 添加的目标/规则，因请求体解码失败已写入空字段脏数据，需删除后重新添加。
 
 ---
 
@@ -1086,6 +1121,54 @@ if s.cb.IsOpen(rule.Host) {
 
 ---
 
+### [FEA-07] WebUI 模式缺少云厂商凭据配置入口
+
+- **严重度：** 高
+- **当前状态：** ✅ 已修复
+- **所属模块：** WebUI 前端 / 凭据管理
+- **涉及文件：** `webui/frontend/src/views/Settings.vue`、`main.go`
+- **修复说明：** 两部分联动修复：① Settings.vue 增加"云厂商凭据"区域（4 个 `type="password"` 输入框，绑定 `tc_access_id`/`tc_access_key`/`ali_access_id`/`ali_access_key`，保存时随现有 `PUT /api/settings` 写入，后端零改动）；② main.go 删除 `if len(cfg.Targets) > 0 && len(cfg.DomainRules) > 0` 条件分支，始终创建 Syncer 并注册 ReloadFunc（修复冷启动缺口：首次使用时空库不再阻塞同步引擎创建，用户配置保存后热重载自动构建 Provider 并开始同步，无需重启）。前端 dist 已重新构建，`vue-tsc` + `vite build` + `go build ./...` + `go vet ./...` 全部通过。
+- **原始记录：** 用户报告（构建遗漏检查）
+
+**现象描述：** WebUI 模式下无法通过界面配置腾讯云/阿里云的 AccessKey 凭据：
+
+1. **Settings.vue 缺少凭据输入框**：表单仅有 TAG、同步间隔、DNS 服务器、日志级别四个字段，无 `tc_access_id`、`tc_access_key`、`ali_access_id`、`ali_access_key` 输入项
+2. **后端已具备存储能力**：`handlePutSettings` 接受任意 key-value 并写入 settings 表；`LoadConfig()` 已读取 `tc_access_id` 等四个 key；`handleTestConnection` 已从 settings 表读取凭据——仅差前端 UI 一层
+3. **配置导入跳过凭据**：`handleConfigImport` 显式跳过四个凭据字段（安全设计，合理），因此导入配置后凭据仍为空
+
+**影响范围：** WebUI 模式下凭据永远为空，同步引擎无法调用云 API（`main.go` L68 条件分支中 `SetCredentials` 传入空字符串）；测试连接功能也必然失败。用户只能手动编辑 SQLite 数据库设置凭据，完全违背 WebUI 的"开箱即用"设计目标。
+
+**推荐修复方案：**
+
+在 Settings.vue 中增加"云厂商凭据"区域（4 个密码输入框），保存时随其他设置一起通过现有 `PUT /api/settings` 接口写入：
+
+```vue
+<!-- Settings.vue 增加凭据区域 -->
+<h3>云厂商凭据</h3>
+<NFormItem label="腾讯云 SecretId">
+  <NInput v-model:value="settings.tc_access_id" type="password" show-password-on="click" placeholder="AKIDxxx" />
+</NFormItem>
+<NFormItem label="腾讯云 SecretKey">
+  <NInput v-model:value="settings.tc_access_key" type="password" show-password-on="click" />
+</NFormItem>
+<NFormItem label="阿里云 AccessKeyId">
+  <NInput v-model:value="settings.ali_access_id" type="password" show-password-on="click" placeholder="LTAIxxx" />
+</NFormItem>
+<NFormItem label="阿里云 AccessKeySecret">
+  <NInput v-model:value="settings.ali_access_key" type="password" show-password-on="click" />
+</NFormItem>
+```
+
+**方案要点：**
+- 后端零改动：`handlePutSettings` 已支持任意 key-value 写入，`LoadConfig()` 已读取这四个 key，热重载时 `SetCredentials` 已更新凭据并重建 Provider
+- 密码输入框使用 `type="password"` + `show-password-on="click"`，避免肩窥泄露
+- 保存后触发热重载（现有 `notifyReload()` 机制），凭据立即生效无需重启
+- 安全性：WebUI 仅绑定 127.0.0.1（内部工具定位），`GET /api/settings` 返回凭据明文在本地场景可接受；配置导出已剔除凭据（现有安全设计保持不变）
+
+**可行性自检：** 仅需修改 Settings.vue 一个文件，不涉及后端变更；保存链路已全通（PUT → SetSetting → notifyReload → LoadConfig → SetCredentials → 重建 Provider）；与 [COR-07] 热重载修复已实施的部分完全兼容。
+
+---
+
 ## 7. 待讨论事项
 
 ### [DSC-01] `app.Run` 中 `mode` 参数未被使用
@@ -1357,10 +1440,10 @@ if s.cb.IsOpen(rule.Host) {
 
 | 严重度 | 待修复 | 已裁定（待实施） | 已裁定（无需改动） | 待规划 | 已关闭 |
 |--------|--------|-----------------|-------------------|--------|--------|
-| 高 | 8 | — | — | — | 4 |
+| 高 | 8 | — | — | — | 7 |
 | 中 | 10 | — | — | 5 | 2 |
 | 低 | 3 | 4 | 3 | 6 | 4 |
-| **合计** | **21** | **4** | **3** | **11** | **10** |
+| **合计** | **21** | **4** | **3** | **11** | **13** |
 
 > 注：「已裁定（待实施）」指方案已确定但仍需编码/文档变更的项目；「已裁定（无需改动）」指裁定为保持现状的项目。
 
@@ -1378,6 +1461,7 @@ if s.cb.IsOpen(rule.Host) {
 | [BLD-04] | Release 流程缺少前端构建 | 待修复 |
 | [DKR-02] | `build/Dockerfile` 缺少前端构建阶段 | 待修复 |
 | [WEB-01] | 前端与 Syncer 数组索引代替 DB ID | 待修复 |
+| [FEA-07] | WebUI 缺少云厂商凭据配置入口 | ✅ 已修复 |
 
 > 注：[BLD-01]、[BLD-03]、[BLD-04]、[DKR-02] 为同一根因（前端未纳入构建链路的四个表现），建议统一修复。
 
@@ -1414,7 +1498,6 @@ if s.cb.IsOpen(rule.Host) {
 | [DSC-03] | `testConnection` 复用 ClientPool | ✅ 已裁定-注入复用ClientPool |
 | [DSC-02] | CVM `checkRuleLimit` 重复 API 调用 | ✅ 已裁定-保持现状 |
 | [DSC-04] | HTTP server 优雅退出必要性 | ✅ 已裁定-保持现状 |
-| [WEB-07] | 前端 JSON 字段命名风格不统一 | ✅ 已裁定-保持现状 |
 | [COR-08] | CVM `checkRuleLimit` IPv6 计数不完整 | 📋 待规划（低优先级） |
 | [WEB-03] | TypeScript `any` 类型泛滥 | 📋 待规划（低优先级） |
 | [WEB-04] | Dashboard 轮询而非 SSE | 📋 待规划 |
@@ -1438,7 +1521,7 @@ if s.cb.IsOpen(rule.Host) {
 | [DSC-04] | 保持现状 | 无 |
 | [DSC-05] | 选 npm | 更新 Design1.md、Build1.md 中包管理器描述 |
 | [DSC-06] | 添加 `FWALIZER_DATA_DIR` 环境变量 | 修改 `main.go` 的 `getDataDir()`；创建 `docker-compose.yml.example` |
-| [WEB-07] | 保持现状 | 无 |
+| [WEB-07] | 统一为 snake_case（原"保持现状"裁定已推翻） | ✅ 已修复（前端统一 snake_case） |
 
 ---
 
@@ -1446,15 +1529,17 @@ if s.cb.IsOpen(rule.Host) {
 
 1. **构建链路断裂**（最高优先级）：前端无法被打包进二进制是最严重的问题，影响所有分发渠道（Docker、Release、本地编译）。建议优先修复 [BLD-01] + [BLD-03] + [BLD-04] + [DKR-02] + [BLD-05]，可统一在一次变更中完成。前端构建命令统一使用 `npm ci && npm run build`（见 [DSC-05] 裁定）。
 
-2. **数据一致性风险**（高优先级）：[WEB-01] 前端数组索引 vs DB ID 错位问题影响数据正确性和同步可靠性，删除记录后规则可能静默停止同步，存在安全风险。建议紧随构建链路修复后处理。
+2. **凭据配置缺失**（已修复）：[FEA-07] Settings.vue 已增加凭据输入框，main.go 冷启动缺口已同步修复（始终创建 Syncer，首次配置保存后自动开始同步）。
 
-3. **文档残留清理**（中优先级）：[DOC-01]、[DOC-02] 两处文档残留直接影响新用户体验，可批量清理。同步更新 Design1.md、Build1.md 中包管理器为 npm（[DSC-05] 裁定）。
+3. **数据一致性风险**（高优先级）：[WEB-01] 前端数组索引 vs DB ID 错位问题影响数据正确性和同步可靠性，删除记录后规则可能静默停止同步，存在安全风险。建议紧随构建链路修复后处理。
 
-4. **Docker 规范清理**（中优先级）：[DKR-01] 删除根 Dockerfile + [DKR-03] 添加 WORKDIR + [DSC-06] 创建 docker-compose.yml.example，清理 Docker 配置冗余并建立环境变量驱动的数据目录配置。
+4. **文档残留清理**（中优先级）：[DOC-01]、[DOC-02] 两处文档残留直接影响新用户体验，可批量清理。同步更新 Design1.md、Build1.md 中包管理器为 npm（[DSC-05] 裁定）。
 
-5. **核心功能补全**：熔断器实际生效（[COR-02]）、同步事件发布（[COR-01]）、热重载重建（[COR-07]）对系统可靠性有直接影响，建议在功能补全阶段集中处理。同步日志写入（[COR-05]）待裁定后跟进。
+5. **Docker 规范清理**（中优先级）：[DKR-01] 删除根 Dockerfile + [DKR-03] 添加 WORKDIR + [DSC-06] 创建 docker-compose.yml.example，清理 Docker 配置冗余并建立环境变量驱动的数据目录配置。
 
-6. **已裁定待实施项**（低优先级，随上述批次顺手处理）：移除 `app.Run` mode 参数（[DSC-01]）、ClientPool 注入 Deps（[DSC-03]）、getDataDir 读 FWALIZER_DATA_DIR（[DSC-06]）。
+6. **核心功能补全**：熔断器实际生效（[COR-02]）、同步事件发布（[COR-01]）、热重载重建（[COR-07]）对系统可靠性有直接影响，建议在功能补全阶段集中处理。同步日志写入（[COR-05]）待裁定后跟进。
+
+7. **已裁定待实施项**（低优先级，随上述批次顺手处理）：移除 `app.Run` mode 参数（[DSC-01]）、ClientPool 注入 Deps（[DSC-03]）、getDataDir 读 FWALIZER_DATA_DIR（[DSC-06]）。
 
 ---
 

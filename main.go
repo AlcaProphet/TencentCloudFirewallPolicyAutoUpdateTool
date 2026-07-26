@@ -64,65 +64,59 @@ func main() {
 		// 启动 WebUI 服务器
 		srv := webui.NewServer(store, cfg.WebUIPort)
 
-		// 如果有目标和规则，启动同步引擎并接通热重载
-		if len(cfg.Targets) > 0 && len(cfg.DomainRules) > 0 {
-			provider.SetCredentials(cfg.TCAccessID, cfg.TCAccessKey, cfg.AliAccessID, cfg.AliAccessKey)
-			pool := provider.NewClientPool()
-			var providers []provider.Provider
-			for _, t := range cfg.Targets {
-				p, err := provider.NewProvider(t, t.ID, pool)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "创建 Provider 失败: %v\n", err)
-					os.Exit(1)
-				}
-				providers = append(providers, p)
-			}
-			resolver := dns.NewResolver(cfg.DNS, cfg.DNSTimeout)
-			s := syncer.New(cfg, providers, resolver)
-
-			// 将 Syncer 和 EventBus 传入 WebUI（支持 status/trigger/dryrun/SSE）
-			srv.SetSyncer(s, s.EventBus())
-			
-			// 同步日志写入：订阅 sync:complete 和 sync:error 事件
-			logWriter := &webapi.StoreLogWriter{Store: store}
-			s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
-			s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
-			
-			// 接通热重载：WebUI 修改配置后重新加载并通知 Syncer
-			srv.SetReloadFunc(func() {
-				newCfg, err := store.LoadConfig()
-				if err != nil {
-					slog.Error("重载配置失败", "error", err)
-					return
-				}
-				// 更新凭据
-				provider.SetCredentials(newCfg.TCAccessID, newCfg.TCAccessKey, newCfg.AliAccessID, newCfg.AliAccessKey)
-				// 重建 ClientPool 和 Provider 列表
-				newPool := provider.NewClientPool()
-				var newProviders []provider.Provider
-				for _, t := range newCfg.Targets {
-					p, err := provider.NewProvider(t, t.ID, newPool)
-					if err != nil {
-						slog.Error("重建 Provider 失败", "target", t.ResourceID, "error", err)
-						continue
-					}
-					newProviders = append(newProviders, p)
-				}
-				s.ReloadProviders(newProviders)
-				s.Reload(newCfg)
-			})
-
-			go srv.Start()
-			go s.Run()
-			syncer.WaitForSignal(s)
-		} else {
-			// 无配置时仅运行 WebUI，等待用户配置
-			slog.Info("WebUI 已启动，请通过浏览器配置", "port", cfg.WebUIPort)
-			if err := srv.Start(); err != nil {
-				fmt.Fprintf(os.Stderr, "WebUI 服务器失败: %v\n", err)
+		// 创建同步引擎（初始 Provider 可为空，等待用户通过 WebUI 配置后热重载生效）
+		provider.SetCredentials(cfg.TCAccessID, cfg.TCAccessKey, cfg.AliAccessID, cfg.AliAccessKey)
+		pool := provider.NewClientPool()
+		var providers []provider.Provider
+		for _, t := range cfg.Targets {
+			p, err := provider.NewProvider(t, t.ID, pool)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "创建 Provider 失败: %v\n", err)
 				os.Exit(1)
 			}
+			providers = append(providers, p)
 		}
+		resolver := dns.NewResolver(cfg.DNS, cfg.DNSTimeout)
+		s := syncer.New(cfg, providers, resolver)
+
+		// 将 Syncer 和 EventBus 传入 WebUI（支持 status/trigger/dryrun/SSE）
+		srv.SetSyncer(s, s.EventBus())
+
+		// 同步日志写入：订阅 sync:complete 和 sync:error 事件
+		logWriter := &webapi.StoreLogWriter{Store: store}
+		s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
+		s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
+
+		// 接通热重载：WebUI 修改配置后重新加载并通知 Syncer
+		srv.SetReloadFunc(func() {
+			newCfg, err := store.LoadConfig()
+			if err != nil {
+				slog.Error("重载配置失败", "error", err)
+				return
+			}
+			// 更新凭据
+			provider.SetCredentials(newCfg.TCAccessID, newCfg.TCAccessKey, newCfg.AliAccessID, newCfg.AliAccessKey)
+			// 重建 ClientPool 和 Provider 列表
+			newPool := provider.NewClientPool()
+			var newProviders []provider.Provider
+			for _, t := range newCfg.Targets {
+				p, err := provider.NewProvider(t, t.ID, newPool)
+				if err != nil {
+					slog.Error("重建 Provider 失败", "target", t.ResourceID, "error", err)
+					continue
+				}
+				newProviders = append(newProviders, p)
+			}
+			s.ReloadProviders(newProviders)
+			s.Reload(newCfg)
+		})
+
+		if len(providers) == 0 {
+			slog.Info("WebUI 已启动，请通过浏览器配置云资源凭据和目标", "port", cfg.WebUIPort)
+		}
+		go srv.Start()
+		go s.Run()
+		syncer.WaitForSignal(s)
 		return
 	}
 

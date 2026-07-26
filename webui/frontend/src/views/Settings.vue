@@ -53,7 +53,22 @@ async function importConfig(e: Event) {
 <template>
   <div>
     <h2>全局设置</h2>
-    <NForm :model="settings" label-placement="left" label-width="120">
+    <NForm :model="settings" label-placement="left" label-width="160">
+      <h3 style="margin: 0 0 12px">云厂商凭据</h3>
+      <NFormItem label="腾讯云 SecretId">
+        <NInput v-model:value="settings.tc_access_id" type="password" show-password-on="click" placeholder="AKIDxxx" />
+      </NFormItem>
+      <NFormItem label="腾讯云 SecretKey">
+        <NInput v-model:value="settings.tc_access_key" type="password" show-password-on="click" placeholder="SecretKey" />
+      </NFormItem>
+      <NFormItem label="阿里云 AccessKeyId">
+        <NInput v-model:value="settings.ali_access_id" type="password" show-password-on="click" placeholder="LTAIxxx" />
+      </NFormItem>
+      <NFormItem label="阿里云 AccessKeySecret">
+        <NInput v-model:value="settings.ali_access_key" type="password" show-password-on="click" placeholder="AccessKeySecret" />
+      </NFormItem>
+
+      <h3 style="margin: 16px 0 12px">全局设置</h3>
       <NFormItem label="TAG">
         <NInput v-model:value="settings.tag" placeholder="auto-dns" />
       </NFormItem>
