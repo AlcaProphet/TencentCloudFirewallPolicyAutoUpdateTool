@@ -34,6 +34,16 @@
 
 **推荐修复方案：** 删除 L59–200 的全部旧格式和重复内容，仅保留 L1–58 的当前有效配置模板。
 
+**详细修复方案（已验证）：**
+> 验证结果：读取 `.env.example`（200 行），确认 L59–117 为 L1–58 逐字节副本，L118–200 含旧格式（5 列 TARGETS、废弃变量名等）。问题真实存在。
+>
+> 修复步骤：
+> 1. 保留 L1–58（当前有效配置模板）
+> 2. 删除 L59–200（全部重复和旧格式内容）
+> 3. 最终文件仅 58 行
+>
+> 可行性自检：纯文档清理操作，不涉及代码逻辑变更，无编译/运行风险。删除后不影响任何解析器（当前解析器仅识别新格式）。
+
 ---
 
 ### [DOC-02] `README.md` 包含旧版本完整内容残留
@@ -58,6 +68,16 @@
 
 **推荐修复方案：** 删除 L352–540 的全部旧版本内容，仅保留 L1–351 的有效 README。
 
+**详细修复方案（已验证）：**
+> 验证结果：读取 `README.md`（540 行），确认 L352–540 为旧版单云 README 残留（项目名 TencentCloudFirewallTool、旧变量名 DOMAIN_RULES 分号分隔格式、PowerShell 指令等）。问题真实存在。
+>
+> 修复步骤：
+> 1. 保留 L1–351（当前多云版本 README，含项目介绍、快速开始、配置说明、FAQ、许可证）
+> 2. 删除 L352–540（全部旧版本内容）
+> 3. 最终文件约 351 行
+>
+> 可行性自检：纯文档清理操作。L1–351 已包含完整信息，删除旧内容不影响信息完整性。旧 Makefile 目标（make run、make docker-run）在当前 Makefile 中不存在，不会误导用户。
+
 ---
 
 ### [DOC-03] `.dockerignore` 存在重复条目
@@ -74,6 +94,22 @@
 
 **推荐修复方案：** 去重并清理无效条目，保留核心排除项。
 
+**详细修复方案（已验证）：**
+> 验证结果：读取 `.dockerignore`（12 行），确认 `.env` 出现 2 次（L3、L5）、`*.md` 出现 2 次（L2、L10）、`.git` 和 `.git/` 同时存在（L4、L6）、`Ref/` 为不存在的目录（L11）。问题真实存在。
+>
+> 修复步骤：去重并清理，精简为 7 行核心排除项：
+> ```
+> Documents/
+> *.md
+> .env
+> .git/
+> Dockerfile
+> .dockerignore
+> Makefile
+> ```
+>
+> 可行性自检：纯配置清理，去重前后排除规则等价（语义不变）。`Ref/` 目录不存在，删除该条目无影响。
+
 ---
 
 ### [DOC-04] `firewall/` 空目录残留
@@ -89,6 +125,15 @@
 **影响范围：** 无功能影响，仅影响目录整洁度。
 
 **推荐修复方案：** 删除空目录（若含 `.gitkeep` 则一并删除）。
+
+**详细修复方案（已验证）：**
+> 验证结果：`ls -la firewall/` 显示目录存在且为空（仅含 `.` 和 `..`）。问题真实存在。
+>
+> 修复步骤：
+> 1. 执行 `rmdir firewall/` 删除空目录
+> 2. 若目录中有 `.gitkeep` 占位文件，则先删文件再删目录
+>
+> 可行性自检：AGENTS.md 明确声明「旧 `firewall/` 目录可直接删除」。当前代码中无任何 import/引用指向该目录，删除零风险。
 
 ---
 
@@ -114,6 +159,48 @@
 
 **推荐修复方案：** 在 Dockerfile、Makefile、CI Workflow 中集成前端构建步骤（关联 [BLD-03]、[BLD-04]、[DKR-02]）。
 
+**详细修复方案（已验证 — 构建链路统一修复）：**
+> 验证结果：`webui/embed.go` L5 使用 `//go:embed frontend/dist`，但 `webui/frontend/dist/` 已被 `.gitignore` 排除且仓库中不存在。`go build` 在此状态下可以编译（`embed` 指令找不到匹配文件时报错仅在 `go:embed` 模式为 `all` 时触发，当前使用默认模式会静默忽略），但二进制不含前端页面。
+>
+> 此问题（[BLD-01]）与 [BLD-03]/[BLD-04]/[DKR-02]/[BLD-05] 为同一根因——前端构建步骤未纳入任何构建流程。建议统一在一次变更中修复，涉及文件：
+>
+> **① Makefile（[BLD-05]）：** 增加 `frontend` 目标作为 `build` 的前置依赖
+> ```makefile
+> frontend:
+> \tcd webui/frontend && npm ci && npm run build
+>
+> build: frontend
+> \tgo build -ldflags="$(LDFLAGS)" -o fwalizer .
+> ```
+>
+> **② build/Dockerfile（[DKR-02]）：** 增加 Node.js 多阶段构建
+> ```dockerfile
+> FROM node:20-alpine AS frontend-builder
+> WORKDIR /src/webui/frontend
+> COPY webui/frontend/package*.json ./
+> RUN npm ci
+> COPY webui/frontend/ ./
+> RUN npm run build
+>
+> FROM golang:1.25-alpine AS builder
+> # ... 现有 Go 编译阶段 ...
+> COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
+> ```
+>
+> **③ .github/workflows/docker-publish.yml（[BLD-03]）：** 在 Go 编译步骤前增加
+> ```yaml
+> - name: 设置 Node.js
+>   uses: actions/setup-node@v4
+>   with:
+>     node-version: '20'
+> - name: 构建前端
+>   run: cd webui/frontend && npm ci && npm run build
+> ```
+>
+> **④ .github/workflows/release.yml（[BLD-04]）：** 同③，在多平台 Go 编译前加 Node.js + npm build 步骤
+>
+> 可行性自检：`npm ci` 遵循 `package-lock.json` 确保依赖版本一致；[DSC-05] 已裁定使用 npm，无需额外安装包管理器。所有构建命令统一为 `npm ci && npm run build`。前端构建产物 `dist/` 生成后在 Go 编译时由 `//go:embed` 自动嵌入二进制。
+
 ---
 
 ### [BLD-02] `docker-publish.yml` 内容严重重复
@@ -132,6 +219,16 @@
 
 **推荐修复方案：** 删除 L85–161 的重复内容，保留第一段（L1–84，SDK 覆盖更完整），并在保留段中补充前端构建步骤（关联 [BLD-03]）。
 
+**详细修复方案（已验证）：**
+> 验证结果：读取 `docker-publish.yml`（161 行），确认包含两个完整 YAML 文档：L1–84（第一段，含完整四云 SDK 更新）和 L85–161（第二段，仅更新 lighthouse/common）。问题真实存在。
+>
+> 修复步骤：
+> 1. **删除 L85–161**（第二段重复内容，SDK 覆盖不完整且缺少 `file: build/Dockerfile`）
+> 2. **保留 L1–84**（第一段，已包含完整四云 SDK 更新：common/lighthouse/vpc/swas/ecs，正确引用 `file: build/Dockerfile`，含 `build-args: VERSION`）
+> 3. **在保留段中补充前端构建步骤**（参见 [BLD-01] 详细方案③）
+>
+> 可行性自检：GitHub Actions 不支持单文件多 YAML 文档（仅解析第一个 `---` 分隔的文档），删除第二段后 workflow 正常工作。第一段已正确指向 `build/Dockerfile`（非根 Dockerfile），与 [DKR-01] 修复方向一致。
+
 ---
 
 ### [BLD-03] CI/CD 流程缺少前端构建步骤
@@ -148,6 +245,10 @@
 
 **推荐修复方案：** 在 Go 编译步骤前添加 `actions/setup-node@v4` + `npm ci && npm run build`。`release.yml` 只需构建一次前端（在所有 GOOS/GOARCH 编译前）。
 
+**详细修复方案：** 参见 [BLD-01] 详细修复方案③④。两份 CI workflow 分别在 Go 编译步骤前添加 Node.js 环境安装和前端构建步骤。
+
+> 可行性自检：`release.yml` 已在 [DSC-05] 裁定使用 npm，无需安装 pnpm；前端构建一次即可供所有 GOOS/GOARCH 编译使用。
+
 ---
 
 ### [BLD-04] Release 流程缺少前端构建
@@ -163,6 +264,8 @@
 **影响范围：** GitHub Release 中所有二进制均无法使用 WebUI 模式。
 
 **推荐修复方案：** 同 [BLD-03]。
+
+**详细修复方案：** 参见 [BLD-01] 详细修复方案④。
 
 ---
 
@@ -183,6 +286,10 @@
 **推荐修复方案：**
 - `build` 目标增加 `frontend` 依赖：先 `cd webui/frontend && npm ci && npm run build`，再 `go build`
 - `docker-build` 确认引用正确路径
+
+**详细修复方案：** 参见 [BLD-01] 详细修复方案①。验证结果：Makefile L19 已正确引用 `-f build/Dockerfile`，无需修改路径。仅需增加 `frontend` 目标作为 `build` 的前置依赖。
+
+> 可行性自检：`all` 目标（L21）依赖 `vet test build`，增加 `frontend` 后 `make all` 也会自动构建前端。不影响 `test` 和 `vet` 目标（不需要前端）。
 
 ---
 
@@ -207,6 +314,16 @@
 **影响范围：** 用户若直接执行 `docker build .`（默认使用根 Dockerfile）会得到缺少版本信息和健康检查的镜像；维护两份 Dockerfile 容易产生不一致。
 
 **推荐修复方案：** 删除根目录 `Dockerfile`，仅保留 `build/Dockerfile`。原 Issues 5.3、5.4（版本注入和 HEALTHCHECK）随之关闭。
+
+**详细修复方案（已验证）：**
+> 验证结果：根目录 `Dockerfile`（30 行）存在，缺少 `ARG VERSION`、`-tags docker`、双模式 HEALTHCHECK；`build/Dockerfile`（20 行）存在且已正确配置上述三项。两个 Dockerfile 共存。问题真实存在。
+>
+> 修复步骤：
+> 1. **删除根目录 `Dockerfile`**
+> 2. 保留 `build/Dockerfile`（Makefile L19 和 CI L76 均正确引用此路径）
+> 3. 同步修复 [DKR-03]：为 `build/Dockerfile` 运行阶段增加 `WORKDIR /app`
+>
+> 可行性自检：根 Dockerfile 无任何构建引用（Makefile `docker-build` 使用 `-f build/Dockerfile`，CI 同样使用 `file: build/Dockerfile`）。用户执行裸 `docker build .` 的场景极少，删除后无功能影响。
 
 ---
 
@@ -236,6 +353,10 @@ FROM golang:1.25-alpine AS builder
 COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 ```
 
+**详细修复方案：** 参见 [BLD-01] 详细修复方案②。验证结果：`build/Dockerfile` 当前仅含 Go 编译和 Alpine 运行两个阶段，缺少前端构建阶段。
+
+> 可行性自检：Node.js 多阶段构建使用 `node:20-alpine` 镜像，与 Go 编译阶段 (`golang:1.25-alpine`) 和运行阶段 (`alpine:3.20`) 基础一致。前端构建在前，产物通过 `COPY --from` 传递，不影响最终镜像体积。`npm ci` 需要 `package-lock.json` 存在（已确认存在）。
+
 ---
 
 ### [DKR-03] Docker 运行阶段缺少 `WORKDIR`
@@ -251,6 +372,17 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 **影响范围：** 按 README 文档运行的 Docker `.env` 模式无法正常工作。
 
 **推荐修复方案：** 在 `build/Dockerfile` 运行阶段添加 `WORKDIR /app`。
+
+**详细修复方案（已验证）：**
+> 验证结果：`build/Dockerfile` L13–19 运行阶段无 `WORKDIR` 指令，默认工作目录为 `/`。`main.go` 中 `.env` 模式使用 `config.LoadEnv(".env")` 解析为相对路径，绝对化后指向 `/.env`。而 README 挂载卷到 `/app/.env`，路径不匹配。问题真实存在。
+>
+> 修复步骤：
+> 在 `build/Dockerfile` L14 `RUN adduser -D appuser` 之后添加：
+> ```dockerfile
+> WORKDIR /app
+> ```
+>
+> 可行性自检：`WORKDIR /app` 使程序从 `/app` 启动，`config.LoadEnv(".env")` 解析为 `/app/.env`，与 README 挂载路径一致。不影响其他行为（二进制在 `/usr/local/bin/fwalizer`，PATH 中可访问）。
 
 ---
 
@@ -282,6 +414,71 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 3. **前端**：使用返回的 `row.id` 字段而非 `index + 1`
 4. **建议优先修复**此问题——影响数据正确性和同步可靠性
 
+**详细修复方案（已验证 — 三层联动修复）：**
+> 验证结果：`config/store.go` L127 的 `GetTargets()` SELECT 不含 `id` 列；`syncer/syncer.go` L253 `filterRulesForTarget` 使用 `targetIndex+1`（数组下标）比较 `r.Targets`（DB ID）。问题真实存在，两者初始一致但在删除操作后错位。
+>
+> **第1步：config/config.go — 结构体增加 ID 字段**
+> ```go
+> type TargetConfig struct {
+>     ID         int       `json:"id"`
+>     CloudType  CloudType `json:"cloud_type"`
+>     Region     string    `json:"region"`
+>     ResourceID string    `json:"resource_id"`
+> }
+> type DomainRule struct {
+>     ID       int    `json:"id"`
+>     Host     string `json:"host"`
+>     Protocol string `json:"protocol"`
+>     Ports    string `json:"ports"`
+>     Action   string `json:"action"`
+>     Targets  []int  `json:"targets"`
+>     Comment  string `json:"comment"`
+> }
+> ```
+>
+> **第2步：config/store.go — SELECT 包含 id 列**
+> ```go
+> // GetTargets L127: 改为
+> rows, err := s.db.Query("SELECT id, cloud_type, region, resource_id FROM targets ORDER BY id")
+> // rows.Scan 处增加 &t.ID
+> if err := rows.Scan(&t.ID, &ct, &t.Region, &t.ResourceID); err != nil {
+>
+> // GetRules L163: 改为
+> rows, err := s.db.Query("SELECT id, host, protocol, ports, action, targets, comment FROM rules ORDER BY id")
+> // rows.Scan 处增加 &r.ID
+> if err := rows.Scan(&r.ID, &r.Host, &r.Protocol, &r.Ports, &r.Action, &targets, &r.Comment); err != nil {
+> ```
+>
+> **第3步：provider — Provider 使用 DB ID**
+> 修改 `NewProvider` 相关逻辑，不再传 `index int`，改为传 `dbID int`。Provider 的 `TargetIndex()` 方法语义变为返回 DB ID 而非数组下标。
+>
+> **第4步：syncer/syncer.go — filterRulesForTarget**
+> ```go
+> func filterRulesForTarget(rules []config.DomainRule, targetDBID int) []config.DomainRule {
+>     var filtered []config.DomainRule
+>     for _, r := range rules {
+>         if len(r.Targets) == 0 {
+>             filtered = append(filtered, r)
+>             continue
+>         }
+>         for _, t := range r.Targets {
+>             if t == targetDBID {  // 直接比较 DB ID，不再 +1
+>                 filtered = append(filtered, r)
+>                 break
+>             }
+>         }
+>     }
+>     return filtered
+> }
+> ```
+>
+> 可行性自检：
+> - 第1/2步改动向后兼容——API 返回 JSON 会多一个 `id` 字段，前端可选使用
+> - 第3步涉及 Provider 接口变更，需要同步修改 `tc_lighthouse.go`、`tc_cvm.go`、`ali_swas.go`、`ali_ecs.go` 四个工厂函数
+> - 第4步配合第3步，`TargetIndex()` 返回值语义从"0-based 数组下标"变为"DB ID"，调用侧 `syncAll` L184 和 `DryRun` L142 无需改动（仅语义变化）
+> - 前端需要同步修改 `Targets.vue` L33/L52 和 `Rules.vue` L37/L56，将 `index + 1` 替换为 `row.id`
+> - 建议在单次变更中完成全部四步，否则中间状态会出现 ID 语义不一致
+
 ---
 
 ### [WEB-02] 配置导入缺少事务保护
@@ -297,6 +494,31 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 **影响范围：** 配置导入中途失败时，用户原有配置丢失且新配置未完全写入。
 
 **推荐修复方案：** 在 `config/store.go` 添加 `WithTransaction` 事务方法，将导入操作包裹在同一事务中，失败时自动回滚。
+
+**详细修复方案（已验证）：**
+> 验证结果：`webui/api/settings.go` L97–118 的 `handleConfigImport` 依次调用 `ClearAll()` → `BatchAddTargets()` → `BatchAddRules()` → settings 写入，无事务包裹。`config/store.go` 无 `WithTransaction` 方法。问题真实存在。
+>
+> 修复步骤：
+>
+> **第1步：config/store.go — 增加 WithTransaction 方法**
+> ```go
+> func (s *Store) WithTransaction(fn func(tx *sql.Tx) error) error {
+>     tx, err := s.db.Begin()
+>     if err != nil {
+>         return fmt.Errorf("开始事务失败: %w", err)
+>     }
+>     if err := fn(tx); err != nil {
+>         tx.Rollback()
+>         return err
+>     }
+>     return tx.Commit()
+> }
+> ```
+>
+> **第2步：webui/api/settings.go — handleConfigImport 包裹事务**
+> 将 L97–118 的 `ClearAll` → `BatchAddTargets` → `BatchAddRules` → settings 写入包裹在 `d.Store.WithTransaction` 回调中。
+>
+> 可行性自检：SQLite 支持事务，`BEGIN/COMMIT/ROLLBACK` 为标准操作。事务包裹后若 `BatchAddRules` 失败则自动回滚 `ClearAll` 和 `BatchAddTargets` 的变更，保证数据一致性。不影响其他 Store 方法。
 
 ---
 
@@ -402,6 +624,32 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 
 **推荐修复方案：** 在 `syncAll()` 开头发布 `EventSyncStart`，结尾发布 `EventSyncComplete`（附带耗时、成功/失败统计）。
 
+**详细修复方案（已验证）：**
+> 验证结果：`notifier/bus.go` L13–14 定义了 `EventSyncStart` 和 `EventSyncComplete` 两种事件类型。`syncer/syncer.go` `syncAll()` L172–198 仅在开始时打印 slog.Info，结束时更新 `lastSync` 时间戳——从未调用 `s.bus.Publish()` 发布 start/complete 事件。问题真实存在。
+>
+> 修复步骤（在 `syncAll()` 中）：
+> ```go
+> func (s *Syncer) syncAll() {
+>     // 发布 sync:start 事件
+>     s.bus.Publish(notifier.Event{
+>         Type:      notifier.EventSyncStart,
+>         Timestamp: time.Now(),
+>         Data:      map[string]any{"targets": len(s.providers), "rules": len(s.cfg.DomainRules)},
+>     })
+>
+>     // ... 现有同步逻辑 ...
+>
+>     // 发布 sync:complete 事件（在 wg.Wait() 之后）
+>     s.bus.Publish(notifier.Event{
+>         Type:      notifier.EventSyncComplete,
+>         Timestamp: time.Now(),
+>         Data:      map[string]any{"duration": time.Since(start).String()},
+>     })
+> }
+> ```
+>
+> 可行性自检：`s.bus` 已在 Syncer 初始化时创建（syncer.go L44），可直接使用。`Publish()` 为异步非阻塞（bus.go L75），不影响同步性能。此修复为 [WEB-04] 的 SSE 改造提供事件源。
+
 ---
 
 ### [COR-02] 熔断器 `IsOpen` 检查未实际跳过同步
@@ -426,6 +674,20 @@ if s.cb.IsOpen(rule.Host) {
 }
 ```
 
+**详细修复方案（已验证）：**
+> 验证结果：`syncer/syncer.go` L203–205 调用 `s.cb.IsOpen(rule.Host)` 检查熔断状态，但仅打印 Debug 日志，之后无条件继续执行 DNS 解析和同步（L208 `s.resolver.Resolve`）。`IsOpen` 返回 true 时缺少 `return` 语句。问题真实存在。
+>
+> 修复步骤（单行修改）：
+> 在 `syncDomain()` L203–205 的 if 块内增加 `return`：
+> ```go
+> if s.cb.IsOpen(rule.Host) {
+>     slog.Debug("域名已熔断，跳过本次同步", "domain", rule.Host)
+>     return  // 新增：跳过 DNS 解析和同步
+> }
+> ```
+>
+> 可行性自检：熔断器的 `RecordSuccess` 和 `RecordFailure` 调用已在 L210 和 L219 正确实现。`IsOpen` 在半开状态（failCount >= threshold）返回 true——加入 `return` 后，半开状态的域名不会执行 DNS 解析，仅靠下一次调用时的成功来重置计数器。这与需求「半开状态每轮探测一次」的实现有细微差异：当前实现会使半开状态下完全跳过而非探测一次。若要实现真正半开探测，需在 CircuitBreaker 中增加状态机。建议先修复 `return` 缺失这个功能性 bug，半开探测优化可作为增强项（[COR-08] 类似，低优先级待规划）。
+
 ---
 
 ### [COR-03] `truncateDesc` 缺失 SWAS 50 字符限制
@@ -442,6 +704,31 @@ if s.cb.IsOpen(rule.Host) {
 
 **推荐修复方案：** 在 `truncateDesc` 中为 `CloudAliSWAS` 添加 `maxLen = 50` 分支。
 
+**详细修复方案（已验证）：**
+> 验证结果：`syncer/retry.go` L120–133 的 `truncateDesc` 仅处理 `CloudTCLighthouse`（maxLen=64），`default` 分支直接返回原字符串。SWAS 的 `Remark` 字段限制为 50 字符（阿里云 SWAS API 文档 `CreateFirewallRules`）。问题真实存在。
+>
+> 修复步骤（在 switch 中增加一个 case）：
+> ```go
+> func truncateDesc(desc string, ct config.CloudType) string {
+>     maxLen := 0
+>     switch ct {
+>     case config.CloudTCLighthouse:
+>         maxLen = 64
+>     case config.CloudAliSWAS:
+>         maxLen = 50  // Remark ≤ 50 字符（阿里云 SWAS API）
+>     default:
+>         return desc
+>     }
+>     runes := []rune(desc)
+>     if len(runes) <= maxLen {
+>         return desc
+>     }
+>     return string(runes[:maxLen])
+> }
+> ```
+>
+> 可行性自检：rune 截断逻辑已在 [FIX-04] 中修复，此处仅增加 maxLen 分支。无编译/运行时风险。ECS 的 Description 限制为 1~512 字符，default 分支不截断是安全的。
+
 ---
 
 ### [COR-04] `strVal` 工具函数位置不当
@@ -455,6 +742,16 @@ if s.cb.IsOpen(rule.Host) {
 **现象描述：** 包级工具函数 `strVal` 定义在 `tc_lighthouse.go` 中，但被四个 Provider 文件共用。若未来 `tc_lighthouse.go` 被重构或移除，会意外删除共享函数。
 
 **推荐修复方案：** 将 `strVal` 函数从 `tc_lighthouse.go` 移动到 `common.go`。
+
+**详细修复方案（已验证）：**
+> 验证结果：`grep "func strVal" provider/` 确认 `strVal` 定义在 `provider/tc_lighthouse.go` L227，而 `common.go` 中无此函数。四个 Provider 文件均使用该函数。问题真实存在。
+>
+> 修复步骤：
+> 1. 从 `tc_lighthouse.go` 中剪切 `strVal` 函数（L227-232 附近）
+> 2. 粘贴到 `common.go` 末尾
+> 3. 无需修改任何 import（同属 `provider` 包）
+>
+> 可行性自检：纯代码移动操作，不改变函数签名和行为。同包内移动无需更新调用侧 import。编译检查即可验证。
 
 ---
 
@@ -472,6 +769,55 @@ if s.cb.IsOpen(rule.Host) {
 
 **推荐修复方案：** 通过 EventBus 订阅 `sync:complete`/`sync:error` 事件，在订阅者中写入 Store；或在 Syncer 中注入 `LogFunc` 回调。
 
+**详细修复方案（已验证）：**
+> 验证结果：`config/store.go` L248–260 的 `AddSyncLog()` 和 L262–282 的 `GetSyncLogs()` 已实现完备。`syncer/syncer.go` 中 Syncer 不持有 Store 引用，同步过程中从未调用 `AddSyncLog()`。问题真实存在。
+>
+> 推荐方案：EventBus 订阅模式（解耦更好，符合现有架构）
+>
+> 修复步骤：
+>
+> **第1步：新建 `webui/api/logwriter.go`**
+> ```go
+> package api
+>
+> import (
+>     "log/slog"
+>     "github.com/alcaprophet/fwalizer/config"
+>     "github.com/alcaprophet/fwalizer/notifier"
+> )
+>
+> type StoreLogWriter struct {
+>     store *config.Store
+> }
+>
+> func (w *StoreLogWriter) OnEvent(event notifier.Event) error {
+>     log := config.SyncLog{Timestamp: event.Timestamp}
+>     if v, ok := event.Data["provider"].(string); ok { log.Target = v }
+>     if v, ok := event.Data["domain"].(string); ok { log.Domain = v }
+>     switch event.Type {
+>     case notifier.EventSyncError:
+>         log.Result = "failed"
+>         if v, ok := event.Data["error"].(string); ok { log.Error = v }
+>     case notifier.EventSyncComplete:
+>         log.Result = "success"
+>     }
+>     if err := w.store.AddSyncLog(log); err != nil {
+>         slog.Warn("写入同步日志失败", "error", err)
+>     }
+>     return nil
+> }
+> ```
+>
+> **第2步：`main.go` 中注册订阅**
+> 在 Syncer 创建后（L78 附近）添加：
+> ```go
+> logWriter := &api.StoreLogWriter{Store: store}
+> s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
+> s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
+> ```
+>
+> 可行性自检：基于现有 `Subscriber` 接口和 EventBus 架构，Syncer 无需感知 Store。此方案依赖 [COR-01]（sync:complete 事件发布）先修复。在 `syncDomain` L232 成功路径也可增加 RuleChanged 事件携带 added/deleted 计数以丰富日志内容。
+
 ---
 
 ### [COR-06] `LoadConfig` 未加载 `webui_port` 和 `dns_fail_threshold`
@@ -485,6 +831,26 @@ if s.cb.IsOpen(rule.Host) {
 **现象描述：** `LoadConfig()` 从 settings 表读取 `tag`、`interval`、`dns`、`log_level`，但未读取 `webui_port` 和 `dns_fail_threshold`。用户通过 WebUI 修改这两项后，重载配置不会生效。
 
 **推荐修复方案：** 在 `LoadConfig()` 中补充对这两个字段的读取和解析。
+
+**详细修复方案（已验证）：**
+> 验证结果：`config/store.go` L284–332 的 `LoadConfig()` 已读取 settings 中的 `tag`、`interval`、`dns`、`log_level`，但未读取 `webui_port` 和 `dns_fail_threshold`。问题真实存在。
+>
+> 修复步骤（在 L329 之后增加）：
+> ```go
+> if v := settings["webui_port"]; v != "" {
+>     if n, err := strconv.Atoi(v); err == nil {
+>         cfg.WebUIPort = n
+>     }
+> }
+> if v := settings["dns_fail_threshold"]; v != "" {
+>     if n, err := strconv.Atoi(v); err == nil {
+>         cfg.DNSFailThreshold = n
+>     }
+> }
+> ```
+> 需在 import 中增加 `"strconv"`。
+>
+> 可行性自检：`WebUIPort` 默认值 9090（L308），`DNSFailThreshold` 默认值 5（L306）。仅当 settings 表中有对应 key 且 value 可解析为整数时才覆盖默认值，与现有 tag/interval 等字段的处理模式一致。
 
 ---
 
@@ -507,6 +873,48 @@ if s.cb.IsOpen(rule.Host) {
 - 修改凭据后不生效（直到重启）
 
 **推荐修复方案：** 热重载时重建 providers：调用 `provider.SetCredentials(newCfg...)`、创建新 `ClientPool`、重新构建 providers 列表；为 Syncer 添加 `ReloadProviders` 方法。
+
+**详细修复方案（已验证）：**
+> 验证结果：`main.go` L84–91 的 `ReloadFunc` 仅调用 `store.LoadConfig()` → `s.Reload(newCfg)`。`syncer/syncer.go` L76–79 的 `Run()` 中仅更新 `s.cfg` 和 `ticker.Reset()`。provider 列表、凭据、ClientPool 均不更新。问题真实存在。
+>
+> 修复步骤：
+>
+> **第1步：syncer/syncer.go — 增加 ReloadProviders 方法**
+> ```go
+> func (s *Syncer) ReloadProviders(providers []provider.Provider) {
+>     s.mu.Lock()
+>     defer s.mu.Unlock()
+>     s.providers = providers
+> }
+> ```
+>
+> **第2步：main.go — ReloadFunc 中重建 providers**
+> ```go
+> srv.SetReloadFunc(func() {
+>     newCfg, err := store.LoadConfig()
+>     if err != nil {
+>         slog.Error("重载配置失败", "error", err)
+>         return
+>     }
+>     // 更新凭据
+>     provider.SetCredentials(newCfg.TCAccessID, newCfg.TCAccessKey, newCfg.AliAccessID, newCfg.AliAccessKey)
+>     // 重建 ClientPool 和 Provider 列表
+>     newPool := provider.NewClientPool()
+>     var newProviders []provider.Provider
+>     for i, t := range newCfg.Targets {
+>         p, err := provider.NewProvider(t, i, newPool)
+>         if err != nil {
+>             slog.Error("重建 Provider 失败", "target", t.ResourceID, "error", err)
+>             continue
+>         }
+>         newProviders = append(newProviders, p)
+>     }
+>     s.ReloadProviders(newProviders)
+>     s.Reload(newCfg)
+> })
+> ```
+>
+> 可行性自检：新建 ClientPool 会导致旧 Client 被丢弃（Go GC 回收），若有正在进行的同步请求使用旧 Client 不会受影响（SDK Client 是值类型拷贝）。此修复需与 [WEB-01]（DB ID 修复）协调——若 [WEB-01] 已修复，`NewProvider(t, i, pool)` 的第二个参数应改为 `t.ID` 而非 `i`。
 
 ---
 
@@ -543,6 +951,44 @@ if s.cb.IsOpen(rule.Host) {
 **影响范围：** macOS 和 Windows 用户的数据存储位置不符合操作系统规范。
 
 **推荐修复方案：** 使用 `runtime.GOOS` 按平台返回不同路径。
+
+**详细修复方案（已验证）：**
+> 验证结果：`main.go` L114–121 的 `getDataDir()` 固定返回 `~/.config/fwalizer`（Linux 规范），未按平台区分。问题真实存在。
+>
+> 修复步骤：
+> ```go
+> func getDataDir() string {
+>     // 优先使用环境变量（Docker 部署场景）
+>     if dir := os.Getenv("FWALIZER_DATA_DIR"); dir != "" {
+>         return dir
+>     }
+>     home, err := os.UserHomeDir()
+>     if err != nil {
+>         fmt.Fprintf(os.Stderr, "无法获取用户目录: %v\n", err)
+>         os.Exit(1)
+>     }
+>     switch runtime.GOOS {
+>     case "darwin":
+>         return filepath.Join(home, "Library", "Application Support", "fwalizer")
+>     case "windows":
+>         appdata := os.Getenv("APPDATA")
+>         if appdata == "" {
+>             appdata = filepath.Join(home, "AppData", "Roaming")
+>         }
+>         return filepath.Join(appdata, "fwalizer")
+>     default:
+>         return filepath.Join(home, ".config", "fwalizer")
+>     }
+> }
+> ```
+> 需在 import 中增加 `"runtime"`。
+>
+> 可行性自检：
+> - `FWALIZER_DATA_DIR` 环境变量最高优先级，解决 [DSC-06] Docker 路径耦合问题
+> - 平台路径符合各 OS 规范：macOS `~/Library/Application Support/`、Windows `%APPDATA%`、Linux `~/.config/`
+> - `os.UserHomeDir()` 错误处理已在 [FIX-07] 中修复
+> - 向后兼容：Linux 路径不变（`~/.config/fwalizer`），macOS/Windows 首次启动会自动迁移到新路径（旧数据需手动迁移或通过 `FWALIZER_DATA_DIR` 指定旧路径）
+> - 此修复需同步更新 `docker-compose.yml.example`（已创建）和 README 中的路径说明
 
 ---
 
