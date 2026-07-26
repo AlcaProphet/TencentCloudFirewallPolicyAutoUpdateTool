@@ -1,6 +1,9 @@
-# FWAlizer 技术实现细节（Build1）
+# FWAlizer 技术实现细节（Build1 · 历史归档）
 
-> 代码级别的实现参考。设计大纲见 [Design1.md](./Design1.md)，AI 编码指令见 [AGENTS.md](./AGENTS.md)。
+> **⚠️ 本文档为历史归档。** 全部 16 个构建 Step 已于第10轮审查前完成。
+> 当前修复与构建计划请参见 [Build2.md](./Build2.md)，问题追踪请参见 [Issue2.md](./Issue2.md)。
+>
+> 以下保留原始构建计划作为技术参考。设计大纲见 [Design1.md](./Design1.md)，AI 编码指令见 [AGENTS.md](./AGENTS.md)。
 
 ---
 

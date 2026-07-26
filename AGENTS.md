@@ -1,6 +1,6 @@
 # AGENTS.md — FWAlizer AI 编码指令
 
-> 本文档是给 AI 编码助手的指令集。项目设计大纲见 [Design1.md](./Design1.md)，技术实现细节见 [Build1.md](./Build1.md)。
+> 本文档是给 AI 编码助手的指令集。项目设计大纲见 [Design1.md](./Design1.md)，技术实现细节见 [Build1.md](./Build1.md)，当前修复与构建计划见 [Build2.md](./Build2.md)，问题追踪见 [Issue2.md](./Issue2.md)。
 
 ---
 
@@ -8,8 +8,7 @@
 
 - **模块路径**：`github.com/alcaprophet/fwalizer`
 - **Go 版本**：`go 1.25`
-- **设计文档优先**：编码前先阅读 [Design1.md](./Design1.md) 和 [Build1.md](./Build1.md)
-- **重构声明**：本项目正在进行全面重构，代码以 [Build1.md](./Build1.md) 为准。仓库中的历史代码（旧 `config/`、`dns/`、`firewall/`、`main.go` 等）可直接删除或覆盖，无需考虑向后兼容性。
+- **设计文档优先**：编码前先阅读 [Design1.md](./Design1.md) 和 [Build1.md](./Build1.md)；当前修复任务以 [Issue2.md](./Issue2.md) 和 [Build2.md](./Build2.md) 为准
 
 ---
 
@@ -155,5 +154,8 @@
 | 文档 | 目标读者 | 内容 |
 |------|---------|------|
 | [Design1.md](./Design1.md) | 人类（开发者/用户） | 架构设计、需求、决策、路线图 |
-| [Build1.md](./Build1.md) | 开发者 | 技术实现细节、代码参考 |
+| [Build1.md](./Build1.md) | 开发者（历史归档） | 原始技术实现细节、分步构建计划（16 Step 已全部完成） |
+| [Build2.md](./Build2.md) | AI 编码助手 | 当前修复与待规划项的构建大纲（11 Step） |
+| [Issue2.md](./Issue2.md) | 开发者 | 权威问题追踪，第11-12轮审查结论与待修复项 |
+| [Issue1.md](./Issue1.md) | 开发者（历史归档） | 第1-10轮审查历史问题精简归档 |
 | AGENTS.md（本文件） | AI 编码助手 | 编码指令与约束 |

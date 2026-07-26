@@ -161,7 +161,7 @@ Syncer ──→ Provider 接口
 | UI 组件库 | **Naive UI** | 轻量、TypeScript 原生、中文生态好 |
 | 嵌入 | Go `embed` | `webui/frontend/dist/` 编译进二进制 |
 | 存储 | **SQLite** (`modernc.org/sqlite`) | 纯 Go、单文件 |
-| 包管理 | **pnpm** | 快速、省空间 |
+| 包管理 | **npm** | Node.js 内置，零门槛 |
 
 ### 视觉规范
 
@@ -191,8 +191,8 @@ Syncer ──→ Provider 接口
 
 ```bash
 cd webui/frontend
-pnpm install
-pnpm build          # 产物输出到 dist/
+npm install
+npm run build          # 产物输出到 dist/
 cd ../..
 go build .          # go:embed 自动包含 dist/
 ```
@@ -244,7 +244,7 @@ notifier/
 | 统一规则模型 | RuleInfo / RuleAction |
 | Web 后端 | `net/http` 标准库 |
 | Web 前端 | Vue 3 + Vite + Naive UI（本地构建） |
-| 前端包管理 | pnpm |
+| 前端包管理 | npm |
 | 配置存储 | SQLite（`modernc.org/sqlite`） |
 | 桌面方案 | 系统托盘 + 浏览器 WebUI |
 | 系统托盘库 | `fyne.io/systray` |
