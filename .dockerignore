@@ -2,6 +2,13 @@ Documents/
 *.md
 .env
 .git/
+Dockerfile
+.dockerignore
+Makefile
+Documents/
+*.md
+.env
+.git/
 .env
 .git
 Dockerfile

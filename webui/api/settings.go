@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/alcaprophet/fwalizer/config"
@@ -93,28 +95,33 @@ func (d *Deps) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 清空旧数据并写入新数据
-	if err := d.Store.ClearAll(); err != nil {
-		writeError(w, http.StatusInternalServerError, "清空旧配置失败: "+err.Error())
-		return
-	}
-	if err := d.Store.BatchAddTargets(imp.Targets); err != nil {
-		writeError(w, http.StatusInternalServerError, "导入目标失败: "+err.Error())
-		return
-	}
-	if err := d.Store.BatchAddRules(imp.Rules); err != nil {
-		writeError(w, http.StatusInternalServerError, "导入规则失败: "+err.Error())
-		return
-	}
-	for k, v := range imp.Settings {
-		// 跳过凭据字段（不导入）
-		if k == "tc_access_id" || k == "tc_access_key" || k == "ali_access_id" || k == "ali_access_key" {
-			continue
+	// 在事务中执行导入，失败自动回滚
+	err := d.Store.WithTransaction(func(tx *sql.Tx) error {
+		// 清空旧数据
+		if err := d.Store.ClearAll(); err != nil {
+			return fmt.Errorf("清空旧配置失败: %w", err)
 		}
-		if err := d.Store.SetSetting(k, v); err != nil {
-			writeError(w, http.StatusInternalServerError, "导入设置失败: "+err.Error())
-			return
+		// 写入新数据
+		if err := d.Store.BatchAddTargets(imp.Targets); err != nil {
+			return fmt.Errorf("导入目标失败: %w", err)
 		}
+		if err := d.Store.BatchAddRules(imp.Rules); err != nil {
+			return fmt.Errorf("导入规则失败: %w", err)
+		}
+		for k, v := range imp.Settings {
+			// 跳过凭据字段（不导入）
+			if k == "tc_access_id" || k == "tc_access_key" || k == "ali_access_id" || k == "ali_access_key" {
+				continue
+			}
+			if err := d.Store.SetSetting(k, v); err != nil {
+				return fmt.Errorf("导入设置失败: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	d.notifyReload()

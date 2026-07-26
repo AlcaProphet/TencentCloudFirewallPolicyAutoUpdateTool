@@ -94,6 +94,13 @@ func (s *Syncer) Reload(cfg *config.Config) {
 	s.configCh <- cfg
 }
 
+// ReloadProviders 热重载 Provider 列表
+func (s *Syncer) ReloadProviders(providers []provider.Provider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.providers = providers
+}
+
 // TriggerSync 手动触发一次同步（非阻塞）
 func (s *Syncer) TriggerSync() {
 	select {
@@ -173,6 +180,13 @@ func (s *Syncer) syncAll() {
 	slog.Info("开始同步", "targets", len(s.providers), "rules", len(s.cfg.DomainRules))
 	start := time.Now()
 
+	// 发布 sync:start 事件
+	s.bus.Publish(notifier.Event{
+		Type:      notifier.EventSyncStart,
+		Timestamp: time.Now(),
+		Data:      map[string]any{"targets": len(s.providers), "rules": len(s.cfg.DomainRules)},
+	})
+
 	// 按云厂商分组，跨云并行
 	groups := s.groupByCloud()
 	var wg sync.WaitGroup
@@ -194,6 +208,14 @@ func (s *Syncer) syncAll() {
 	s.mu.Lock()
 	s.lastSync = time.Now()
 	s.mu.Unlock()
+
+	// 发布 sync:complete 事件
+	s.bus.Publish(notifier.Event{
+		Type:      notifier.EventSyncComplete,
+		Timestamp: time.Now(),
+		Data:      map[string]any{"duration": time.Since(start).String()},
+	})
+
 	slog.Info("同步完成", "耗时", time.Since(start).Round(time.Millisecond))
 }
 
@@ -202,6 +224,7 @@ func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
 	// 0. 熔断检查：已熔断的域名跳过（半开状态仍尝试一次探测）
 	if s.cb.IsOpen(rule.Host) {
 		slog.Debug("域名已熔断，半开探测", "domain", rule.Host)
+		return
 	}
 
 	// 1. DNS 解析（失败则保留现有规则，不删除）
@@ -242,7 +265,7 @@ func (s *Syncer) groupByCloud() map[config.CloudType][]provider.Provider {
 }
 
 // filterRulesForTarget 筛选适用于指定目标的规则
-func filterRulesForTarget(rules []config.DomainRule, targetIndex int) []config.DomainRule {
+func filterRulesForTarget(rules []config.DomainRule, targetDBID int) []config.DomainRule {
 	var filtered []config.DomainRule
 	for _, r := range rules {
 		if len(r.Targets) == 0 {
@@ -250,7 +273,7 @@ func filterRulesForTarget(rules []config.DomainRule, targetIndex int) []config.D
 			continue
 		}
 		for _, t := range r.Targets {
-			if t == targetIndex+1 { // Targets 是 1-based
+			if t == targetDBID { // 直接比较 DB ID
 				filtered = append(filtered, r)
 				break
 			}

@@ -23,7 +23,7 @@ type AliECS struct {
 	targetIndex     int
 }
 
-func newAliECS(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
+func newAliECS(cfg config.TargetConfig, dbID int, pool *ClientPool) (Provider, error) {
 	key := string(config.CloudAliECS) + "|" + cfg.Region + "|" + getAliAccessID()
 
 	client, err := pool.GetOrCreate(key, func() (any, error) {
@@ -42,7 +42,7 @@ func newAliECS(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, 
 		client:          client.(*ecs.Client),
 		securityGroupID: cfg.ResourceID,
 		regionID:        cfg.Region,
-		targetIndex:     index,
+		targetIndex:     dbID,
 	}, nil
 }
 

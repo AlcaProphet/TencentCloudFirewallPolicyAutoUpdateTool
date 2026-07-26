@@ -8,7 +8,7 @@ import (
 )
 
 // Factory 创建 Provider 的工厂函数
-type Factory func(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error)
+type Factory func(cfg config.TargetConfig, dbID int, pool *ClientPool) (Provider, error)
 
 var (
 	mu       sync.RWMutex
@@ -23,12 +23,12 @@ func Register(ct config.CloudType, f Factory) {
 }
 
 // NewProvider 创建 Provider 实例
-func NewProvider(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
+func NewProvider(cfg config.TargetConfig, dbID int, pool *ClientPool) (Provider, error) {
 	mu.RLock()
 	f, ok := registry[cfg.CloudType]
 	mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("不支持的云产品类型: %s", cfg.CloudType)
 	}
-	return f(cfg, index, pool)
+	return f(cfg, dbID, pool)
 }

@@ -19,7 +19,7 @@ type Provider interface {
 	DeleteRules(rules []config.RuleInfo) error
 	// ConvertPorts 统一端口 → 云厂商格式列表
 	ConvertPorts(port string) []string
-	// TargetIndex 返回在 TARGETS 中的索引（0-based）
+	// TargetIndex 返回目标的数据库 ID
 	TargetIndex() int
 }
 

@@ -36,19 +36,21 @@ type RuleAction struct {
 
 // TargetConfig 云资源目标配置
 type TargetConfig struct {
-	CloudType  CloudType
-	Region     string
-	ResourceID string // InstanceId 或 SecurityGroupId
+	ID         int       `json:"id"`
+	CloudType  CloudType `json:"cloud_type"`
+	Region     string    `json:"region"`
+	ResourceID string    `json:"resource_id"` // InstanceId 或 SecurityGroupId
 }
 
 // DomainRule 域名规则配置（RULES 解析结果）
 type DomainRule struct {
-	Host     string
-	Protocol string // TCP / UDP / TCP+UDP / ICMP
-	Ports    string // 单端口、逗号分隔、范围、ALL
-	Action   string // ACCEPT / DROP
-	Targets  []int  // 目标编号（空 = 全部）
-	Comment  string
+	ID       int    `json:"id"`
+	Host     string `json:"host"`
+	Protocol string `json:"protocol"` // TCP / UDP / TCP+UDP / ICMP
+	Ports    string `json:"ports"`    // 单端口、逗号分隔、范围、ALL
+	Action   string `json:"action"`   // ACCEPT / DROP
+	Targets  []int  `json:"targets"`  // 目标编号（空 = 全部）
+	Comment  string `json:"comment"`
 }
 
 // Config 全局配置

@@ -5,13 +5,16 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/alcaprophet/fwalizer/app"
 	"github.com/alcaprophet/fwalizer/config"
 	"github.com/alcaprophet/fwalizer/dns"
+	"github.com/alcaprophet/fwalizer/notifier"
 	"github.com/alcaprophet/fwalizer/provider"
 	"github.com/alcaprophet/fwalizer/syncer"
 	"github.com/alcaprophet/fwalizer/webui"
+	webapi "github.com/alcaprophet/fwalizer/webui/api"
 )
 
 func main() {
@@ -66,8 +69,8 @@ func main() {
 			provider.SetCredentials(cfg.TCAccessID, cfg.TCAccessKey, cfg.AliAccessID, cfg.AliAccessKey)
 			pool := provider.NewClientPool()
 			var providers []provider.Provider
-			for i, t := range cfg.Targets {
-				p, err := provider.NewProvider(t, i, pool)
+			for _, t := range cfg.Targets {
+				p, err := provider.NewProvider(t, t.ID, pool)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "创建 Provider 失败: %v\n", err)
 					os.Exit(1)
@@ -79,7 +82,12 @@ func main() {
 
 			// 将 Syncer 和 EventBus 传入 WebUI（支持 status/trigger/dryrun/SSE）
 			srv.SetSyncer(s, s.EventBus())
-
+			
+			// 同步日志写入：订阅 sync:complete 和 sync:error 事件
+			logWriter := &webapi.StoreLogWriter{Store: store}
+			s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
+			s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
+			
 			// 接通热重载：WebUI 修改配置后重新加载并通知 Syncer
 			srv.SetReloadFunc(func() {
 				newCfg, err := store.LoadConfig()
@@ -87,6 +95,20 @@ func main() {
 					slog.Error("重载配置失败", "error", err)
 					return
 				}
+				// 更新凭据
+				provider.SetCredentials(newCfg.TCAccessID, newCfg.TCAccessKey, newCfg.AliAccessID, newCfg.AliAccessKey)
+				// 重建 ClientPool 和 Provider 列表
+				newPool := provider.NewClientPool()
+				var newProviders []provider.Provider
+				for _, t := range newCfg.Targets {
+					p, err := provider.NewProvider(t, t.ID, newPool)
+					if err != nil {
+						slog.Error("重建 Provider 失败", "target", t.ResourceID, "error", err)
+						continue
+					}
+					newProviders = append(newProviders, p)
+				}
+				s.ReloadProviders(newProviders)
 				s.Reload(newCfg)
 			})
 
@@ -112,10 +134,25 @@ func main() {
 
 // getDataDir 获取数据存储目录
 func getDataDir() string {
+	// 优先使用环境变量（Docker 部署场景）
+	if dir := os.Getenv("FWALIZER_DATA_DIR"); dir != "" {
+		return dir
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "无法获取用户目录: %v\n", err)
 		os.Exit(1)
 	}
-	return filepath.Join(home, ".config", "fwalizer")
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "fwalizer")
+	case "windows":
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			appdata = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(appdata, "fwalizer")
+	default:
+		return filepath.Join(home, ".config", "fwalizer")
+	}
 }

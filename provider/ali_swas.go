@@ -24,7 +24,7 @@ type AliSWAS struct {
 	targetIndex int
 }
 
-func newAliSWAS(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
+func newAliSWAS(cfg config.TargetConfig, dbID int, pool *ClientPool) (Provider, error) {
 	key := string(config.CloudAliSWAS) + "|" + cfg.Region + "|" + getAliAccessID()
 
 	client, err := pool.GetOrCreate(key, func() (any, error) {
@@ -43,7 +43,7 @@ func newAliSWAS(cfg config.TargetConfig, index int, pool *ClientPool) (Provider,
 		client:      client.(*swas.Client),
 		instanceID:  cfg.ResourceID,
 		regionID:    cfg.Region,
-		targetIndex: index,
+		targetIndex: dbID,
 	}, nil
 }
 

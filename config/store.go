@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -124,7 +125,7 @@ func (s *Store) SetSetting(key, value string) error {
 
 // GetTargets 获取所有目标
 func (s *Store) GetTargets() ([]TargetConfig, error) {
-	rows, err := s.db.Query("SELECT cloud_type, region, resource_id FROM targets ORDER BY id")
+	rows, err := s.db.Query("SELECT id, cloud_type, region, resource_id FROM targets ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +135,7 @@ func (s *Store) GetTargets() ([]TargetConfig, error) {
 	for rows.Next() {
 		var t TargetConfig
 		var ct string
-		if err := rows.Scan(&ct, &t.Region, &t.ResourceID); err != nil {
+		if err := rows.Scan(&t.ID, &ct, &t.Region, &t.ResourceID); err != nil {
 			return nil, err
 		}
 		t.CloudType = CloudType(ct)
@@ -160,7 +161,7 @@ func (s *Store) DeleteTarget(id int) error {
 
 // GetRules 获取所有域名规则
 func (s *Store) GetRules() ([]DomainRule, error) {
-	rows, err := s.db.Query("SELECT host, protocol, ports, action, targets, comment FROM rules ORDER BY id")
+	rows, err := s.db.Query("SELECT id, host, protocol, ports, action, targets, comment FROM rules ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +171,7 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 	for rows.Next() {
 		var r DomainRule
 		var targets string
-		if err := rows.Scan(&r.Host, &r.Protocol, &r.Ports, &r.Action, &targets, &r.Comment); err != nil {
+		if err := rows.Scan(&r.ID, &r.Host, &r.Protocol, &r.Ports, &r.Action, &targets, &r.Comment); err != nil {
 			return nil, err
 		}
 		if targets != "" {
@@ -223,6 +224,19 @@ func (s *Store) UpdateRule(id int, r DomainRule) error {
 func (s *Store) ClearAll() error {
 	_, err := s.db.Exec("DELETE FROM targets; DELETE FROM rules; DELETE FROM settings;")
 	return err
+}
+
+// WithTransaction 在事务中执行操作，失败自动回滚
+func (s *Store) WithTransaction(fn func(tx *sql.Tx) error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("开始事务失败: %w", err)
+	}
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // BatchAddTargets 批量添加目标
@@ -326,6 +340,16 @@ func (s *Store) LoadConfig() (*Config, error) {
 	}
 	if v := settings["log_level"]; v != "" {
 		cfg.LogLevel = v
+	}
+	if v := settings["webui_port"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.WebUIPort = n
+		}
+	}
+	if v := settings["dns_fail_threshold"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.DNSFailThreshold = n
+		}
 	}
 
 	return cfg, nil

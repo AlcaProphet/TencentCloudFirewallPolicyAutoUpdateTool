@@ -22,7 +22,7 @@ type TCLighthouse struct {
 	targetIndex int
 }
 
-func newTCLighthouse(cfg config.TargetConfig, index int, pool *ClientPool) (Provider, error) {
+func newTCLighthouse(cfg config.TargetConfig, dbID int, pool *ClientPool) (Provider, error) {
 	// 从环境变量获取凭据（由 app 层传入 Config，此处通过 pool key 隐含）
 	// 实际凭据通过 ClientPool 共享
 	key := string(config.CloudTCLighthouse) + "|" + cfg.Region + "|" + getTCAccessID()
@@ -44,7 +44,7 @@ func newTCLighthouse(cfg config.TargetConfig, index int, pool *ClientPool) (Prov
 	return &TCLighthouse{
 		client:      client.(*lighthouse.Client),
 		instanceID:  cfg.ResourceID,
-		targetIndex: index,
+		targetIndex: dbID,
 	}, nil
 }
 
@@ -223,10 +223,3 @@ func (p *TCLighthouse) ConvertPorts(port string) []string {
 	return result
 }
 
-// strVal 安全获取字符串指针值
-func strVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}

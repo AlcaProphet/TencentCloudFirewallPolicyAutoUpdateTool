@@ -1,9 +1,12 @@
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/alcaprophet/fwalizer/version.Version=$(VERSION)
 
-.PHONY: build test vet clean docker-build all
+.PHONY: build test vet clean docker-build all frontend
 
-build:
+frontend:
+	cd webui/frontend && npm ci && npm run build
+
+build: frontend
 	go build -ldflags="$(LDFLAGS)" -o fwalizer .
 
 test:

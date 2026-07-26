@@ -192,3 +192,11 @@ func (p *ClientPool) GetOrCreate(key string, create func() (any, error)) (any, e
 	p.clients[key] = c
 	return c, nil
 }
+
+// strVal 安全获取字符串指针值
+func strVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

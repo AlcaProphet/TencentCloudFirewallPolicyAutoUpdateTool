@@ -15,9 +15,10 @@
 ### [DOC-01] `.env.example` 含旧格式残留和重复内容
 
 - **严重度：** 高
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
 - **所属模块：** 配置 / 文档
 - **涉及文件：** `.env.example`
+- **修复说明：** 删除 L59–200 全部旧格式和重复内容，文件从 200 行精简为 58 行。`go build ./...` 和 `go vet ./...` 通过。
 - **原始记录：** Issue 4.10 / Issue 5.1（第 1 轮）/ Issue 12.6（第 8 轮）
 
 **现象描述：**
@@ -49,9 +50,10 @@
 ### [DOC-02] `README.md` 包含旧版本完整内容残留
 
 - **严重度：** 高
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
 - **所属模块：** 文档
 - **涉及文件：** `README.md`
+- **修复说明：** 删除 L352–540 全部旧版本单云 README 残留，文件从 540 行精简为 351 行。
 - **原始记录：** Issue 6.1（第 8 轮）
 
 **现象描述：** 文件 L1–351 为当前多云版本 README，L352–540 为旧版本单云（Lighthouse-only）完整 README 残留，包含：
@@ -83,9 +85,10 @@
 ### [DOC-03] `.dockerignore` 存在重复条目
 
 - **严重度：** 低
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
 - **所属模块：** Docker 构建
 - **涉及文件：** `.dockerignore`
+- **修复说明：** 去重并清理无效条目（删除重复的 `.env`、`*.md`、`.git`、不存在的 `Ref/`），精简为 7 行核心排除项。
 - **原始记录：** Issue 5.13（第 7 轮复查）
 
 **现象描述：** `.env` 出现 2 次，`*.md` 出现 2 次，`.git` 和 `.git/` 同时存在，还包含不存在的 `Ref/` 目录。
@@ -115,9 +118,10 @@
 ### [DOC-04] `firewall/` 空目录残留
 
 - **严重度：** 低
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
 - **所属模块：** 目录结构
-- **涉及文件：** `firewall/`（空目录）
+- **涉及文件：** `firewall/`（已删除）
+- **修复说明：** 执行 `rmdir firewall/` 删除空目录。
 - **原始记录：** Issue 5.2（第 1 轮）/ Issue 5.14（第 7 轮复查）
 
 **现象描述：** 项目根目录存在空的 `firewall/` 目录，为旧版本残留。AGENTS.md 明确声明旧 `firewall/` 目录可直接删除。
@@ -613,7 +617,10 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 ### [COR-01] `sync:start` 和 `sync:complete` 事件未发布
 
 - **严重度：** 中
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
+- **所属模块：** Syncer / EventBus
+- **涉及文件：** `syncer/syncer.go`
+- **修复说明：** 在 `syncAll()` 开头发布 `EventSyncStart`，`wg.Wait()` 后发布 `EventSyncComplete`（含耗时和数据量统计）。`go build ./...` 和 `go vet ./...` 通过。
 - **所属模块：** Syncer / EventBus
 - **涉及文件：** `syncer/syncer.go`、`notifier/bus.go`
 - **原始记录：** Issue 7.1（第 3 轮）/ Issue 5.10（第 7 轮复查）
@@ -655,7 +662,10 @@ COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 ### [COR-02] 熔断器 `IsOpen` 检查未实际跳过同步
 
 - **严重度：** 中
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
+- **所属模块：** Syncer / DNS 熔断
+- **涉及文件：** `syncer/syncer.go`
+- **修复说明：** 在 `syncDomain` L203–205 的 `IsOpen` 检查后增加 `return` 语句。`go build ./...` 和 `go vet ./...` 通过。
 - **所属模块：** Syncer / DNS 熔断
 - **涉及文件：** `syncer/syncer.go`、`dns/circuitbreaker.go`
 - **原始记录：** Issue 11.4（第 7 轮）/ Issue 12.1（第 8 轮）
@@ -693,7 +703,10 @@ if s.cb.IsOpen(rule.Host) {
 ### [COR-03] `truncateDesc` 缺失 SWAS 50 字符限制
 
 - **严重度：** 中
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
+- **所属模块：** Syncer / Provider
+- **涉及文件：** `syncer/retry.go`
+- **修复说明：** 在 `truncateDesc` switch 中增加 `case config.CloudAliSWAS: maxLen = 50` 分支。`go build ./...` 和 `go vet ./...` 通过。
 - **所属模块：** Syncer / Provider
 - **涉及文件：** `syncer/retry.go`
 - **原始记录：** Issue 11.1（第 7 轮）
@@ -734,9 +747,10 @@ if s.cb.IsOpen(rule.Host) {
 ### [COR-04] `strVal` 工具函数位置不当
 
 - **严重度：** 低
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
 - **所属模块：** Provider
 - **涉及文件：** `provider/tc_lighthouse.go`、`provider/common.go`
+- **修复说明：** 将 `strVal` 函数从 `tc_lighthouse.go` 移至 `common.go`，同包移动不涉及 import 变更。`go build ./...` 和 `go vet ./...` 通过。
 - **原始记录：** Issue 6.1（第 2 轮）
 
 **现象描述：** 包级工具函数 `strVal` 定义在 `tc_lighthouse.go` 中，但被四个 Provider 文件共用。若未来 `tc_lighthouse.go` 被重构或移除，会意外删除共享函数。
@@ -823,7 +837,10 @@ if s.cb.IsOpen(rule.Host) {
 ### [COR-06] `LoadConfig` 未加载 `webui_port` 和 `dns_fail_threshold`
 
 - **严重度：** 中
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
+- **所属模块：** 配置持久化
+- **涉及文件：** `config/store.go`
+- **修复说明：** 在 `LoadConfig()` 中增加 `webui_port` 和 `dns_fail_threshold` 的读取和 `strconv.Atoi` 解析；import 增加 `"strconv"`。`go build ./...` 和 `go vet ./...` 通过。
 - **所属模块：** 配置持久化
 - **涉及文件：** `config/store.go`
 - **原始记录：** Issue 5.9（第 7 轮复查）
@@ -941,7 +958,10 @@ if s.cb.IsOpen(rule.Host) {
 ### [FEA-01] `getDataDir()` 未按平台区分数据目录
 
 - **严重度：** 中
-- **当前状态：** 待修复
+- **当前状态：** ✅ 已修复（待复核）
+- **所属模块：** App 生命周期
+- **涉及文件：** `main.go`
+- **修复说明：** `getDataDir()` 增加 `FWALIZER_DATA_DIR` 环境变量最高优先级读取；按 `runtime.GOOS` 区分 macOS/Linux/Windows 路径。import 增加 `"runtime"`。`go build ./...` 和 `go vet ./...` 通过。
 - **所属模块：** App 生命周期
 - **涉及文件：** `main.go`
 - **原始记录：** Issue 5.5（第 7 轮复查）

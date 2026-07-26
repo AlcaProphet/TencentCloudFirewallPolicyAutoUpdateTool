@@ -122,6 +122,8 @@ func truncateDesc(desc string, ct config.CloudType) string {
 	switch ct {
 	case config.CloudTCLighthouse:
 		maxLen = 64 // FirewallRuleDescription ≤ 64 字符
+	case config.CloudAliSWAS:
+		maxLen = 50 // Remark ≤ 50 字符（阿里云 SWAS API）
 	default:
 		return desc // 其他云厂商限制宽松，无需截断
 	}
