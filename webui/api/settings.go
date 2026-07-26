@@ -15,7 +15,7 @@ func (d *Deps) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 填充默认值（仅当 key 不存在时），使前端能显示当前生效配置
+	// 填充默认值（key 不存在或值为空时），使前端能显示当前生效配置
 	defaults := map[string]string{
 		"tag":       "auto-dns",
 		"interval":  "5m",
@@ -23,7 +23,7 @@ func (d *Deps) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"log_level": "info",
 	}
 	for k, v := range defaults {
-		if _, exists := settings[k]; !exists {
+		if settings[k] == "" {
 			settings[k] = v
 		}
 	}
