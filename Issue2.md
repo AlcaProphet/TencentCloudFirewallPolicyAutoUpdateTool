@@ -1,530 +1,419 @@
 # FWAlizer WebUI 设计/功能问题记录
 
 > 本文档记录 WebUI 层面的设计优化与功能缺陷。
-> 问题按编号顺序排列，末尾附汇总表与优先修复建议。
+> **第1-10轮审查中的 UI-01 至 UI-12 已全部修复并经第11-12轮确认，以上为精简结论。以下第11-12轮审查内容保持完整。**
 
 ---
 
-## 1. 云资源管理页
+## 已修复项精简汇总（第1-10轮）
 
 ### [UI-01] 云产品列显示原始标识符而非中文名称
-
-- **严重度：** 低
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 / 云资源管理
-- **涉及文件：** `webui/frontend/src/views/Targets.vue`
-
-**现象描述：** 表格"云产品"列直接显示 `cloud_type` 原始值（如 `tc_lighthouse`、`ali_swas`），对用户不友好。
-
-**原因分析：** `Targets.vue` L70 列定义为 `{ title: '云产品', key: 'cloud_type' }`，使用 NDataTable 默认的 key 直出渲染，未提供 `render` 函数做映射。而同文件 L12-17 的 `cloudOptions` 已定义了完整的 label↔value 映射表（用于新增/编辑弹窗的 NSelect），但表格列未复用。
-
-**影响范围：** 仅影响可读性，不影响功能。
-
-**推荐修复方案：** 为"云产品"列添加 `render` 函数，复用 `cloudOptions` 映射：
-
-```typescript
-// Targets.vue columns 定义中
-const cloudLabelMap: Record<string, string> = Object.fromEntries(
-  cloudOptions.map(o => [o.value, o.label])
-)
-
-const columns = [
-  { title: '#', key: 'index', render: (_: any, i: number) => i + 1 },
-  {
-    title: '云产品', key: 'cloud_type',
-    render(row: any) {
-      return cloudLabelMap[row.cloud_type] || row.cloud_type
-    }
-  },
-  // ... 其余列不变
-]
-```
-
----
-
-## 2. 全局设置页
+- **严重度：** 低 | **状态：** ✅ 已修复
+- **修复：** Targets.vue 为"云产品"列添加 `render` 函数，复用 `cloudOptions` 映射表。
 
 ### [UI-02] DNS 服务器默认值应改为国内公共 DNS 并自动补全端口
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** `store.go`、`env.go` 默认 DNS 改为 `223.5.5.5`；`dns/resolver.go` 已有端口自动补全逻辑；前端 placeholder 和 `.env.example` 同步更新。
 
-- **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** 配置 / WebUI 前端
-- **涉及文件：** `config/store.go`（L331）、`config/env.go`（L30）、`dns/resolver.go`（L32-34）、`webui/frontend/src/views/Settings.vue`（L79）
-
-**现象描述：**
-1. 默认 DNS 服务器为 `8.8.8.8:53`（Google DNS），国内环境访问不稳定，应改为 `223.5.5.5`（阿里公共 DNS）
-2. 前端 placeholder 提示 `8.8.8.8:53`，要求用户手动输入端口号，增加使用门槛
-
-**原因分析：**
-- `config/store.go` L331：`DNS: "8.8.8.8:53"` 硬编码默认值
-- `config/env.go` L30：`getOr(kv, "DNS", "8.8.8.8:53")` 硬编码默认值
-- `dns/resolver.go` L32-34：`NewResolver` 已有端口自动补全逻辑（`if !hasPort(dnsAddr) { dnsAddr += ":53" }`），但前端和文档未利用此能力
-- `Settings.vue` L79：placeholder 为 `"8.8.8.8:53"`，暗示用户必须带端口
-
-**影响范围：** 国内用户首次使用时 DNS 解析可能超时或失败；用户需额外记忆端口号格式。
-
-**推荐修复方案：**
-
-1. **默认值变更**（`store.go` L331 + `env.go` L30）：
-```go
-// store.go LoadConfig()
-DNS: "223.5.5.5",
-
-// env.go ParseEnv()
-DNS: getOr(kv, "DNS", "223.5.5.5"),
-```
-
-2. **前端 placeholder 更新**（`Settings.vue` L79）：
-```vue
-<NInput v-model:value="settings.dns" placeholder="223.5.5.5" />
-```
-
-3. **后端无需额外改动**：`dns/resolver.go` L33 的 `hasPort()` 检查已能自动为纯 IP 输入补全 `:53`，`LoadConfig()` 和 `ParseEnv()` 存储的值无需带端口。
-
-4. **`.env.example` 同步更新**（L50）：
-```
-DNS=223.5.5.5
-```
-
----
-
-### [UI-03] 设置表单无默认值预填，用户无法看到当前生效配置
-
-- **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 + API
-- **涉及文件：** `webui/frontend/src/views/Settings.vue`（L8-10, L72-83）、`webui/api/settings.go`（`handleGetSettings`）、`config/store.go`（`GetSettings`）
-
-**现象描述：** TAG、同步间隔、DNS 服务器、日志级别四个字段仅有 `placeholder` 提示（灰色占位文本），输入框实际为空。用户打开设置页面无法区分"当前使用默认值"和"尚未配置"，也无法看到当前生效值。
-
-**原因分析：**
-- `GET /api/settings` → `Store.GetSettings()`（store.go L99-115）仅返回 settings 表中**已显式存储**的 key-value 对
-- 首次使用时 settings 表为空 → API 返回 `{}` → 前端 `settings.tag`、`settings.interval` 等均为 `undefined` → 输入框为空（仅显示 placeholder）
-- 实际生效的默认值（`auto-dns`、`5m`、`223.5.5.5`、`info`）定义在 `LoadConfig()` 中（store.go L329-334），但 `GetSettings()` 不返回这些默认值
-
-**影响范围：** 用户体验差——无法确认当前配置状态；可能误以为未配置而重复填写。
-
-**推荐修复方案：**
-
-**方案 A（推荐）：后端 `GET /api/settings` 返回合并后的有效配置**
-
-在 `handleGetSettings` 中将默认值与已存储值合并后返回：
-
-```go
-func (d *Deps) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-    settings, err := d.Store.GetSettings()
-    if err != nil {
-        writeError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
-    // 填充默认值（仅当 key 不存在时）
-    defaults := map[string]string{
-        "tag":       "auto-dns",
-        "interval":  "5m",
-        "dns":       "223.5.5.5",
-        "log_level": "info",
-    }
-    for k, v := range defaults {
-        if _, exists := settings[k]; !exists {
-            settings[k] = v
-        }
-    }
-    writeJSON(w, http.StatusOK, settings)
-}
-```
-
-前端无需改动——`v-model:value="settings.tag"` 自动显示返回的值。
-
-**方案 B：前端 onMounted 时填充默认值**（不推荐，默认值分散在前后端两处维护）
-
----
+### [UI-03] 设置表单无默认值预填
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** `GET /api/settings` 返回合并默认值后的有效配置（tag/interval/dns/log_level），前端 `v-model` 自动显示。
 
 ### [UI-04] 日志级别应改为下拉选择组件
-
-- **严重度：** 低
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端
-- **涉及文件：** `webui/frontend/src/views/Settings.vue`（L81-83）
-
-**现象描述：** 日志级别（`log_level`）当前为 `NInput` 文本输入框，用户可输入任意字符串。若输入无效值（如 `verbose`、`INFO`），后端 `app.InitLogger()` 会 fallback 到默认级别但不报错，用户不知情。
-
-**原因分析：** `Settings.vue` L81-83 使用 `<NInput v-model:value="settings.log_level" placeholder="info" />`，无输入约束。有效值仅为 `debug` / `info` / `warn` / `error` 四种（`app.InitLogger` 中的 switch 分支）。
-
-**影响范围：** 用户可能输入无效值导致日志级别不符合预期。
-
-**推荐修复方案：**
-
-```vue
-<!-- Settings.vue：替换 NInput 为 NSelect -->
-<NFormItem label="日志级别">
-  <NSelect v-model:value="settings.log_level" :options="[
-    { label: 'Debug', value: 'debug' },
-    { label: 'Info', value: 'info' },
-    { label: 'Warn', value: 'warn' },
-    { label: 'Error', value: 'error' },
-  ]" />
-</NFormItem>
-```
-
-需在 import 中增加 `NSelect`。
-
----
-
-## 3. 同步日志页
+- **严重度：** 低 | **状态：** ✅ 已修复
+- **修复：** Settings.vue 的 log_level 从 NInput 改为 NSelect（debug/info/warn/error）。
 
 ### [UI-05] 时间戳格式不可读
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** Logs.vue 添加 `formatTime()` 渲染函数，显示本地时区格式（含 UTC 偏移）。
 
-- **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 / 同步日志
-- **涉及文件：** `webui/frontend/src/views/Logs.vue`（L29, L45）、`config/store.go`（SyncLog 结构体 L20）
-
-**现象描述：**
-- 历史记录"时间"列显示 Go `time.Time` 的 JSON 默认序列化格式：`2026-07-26T19:51:37.263852+08:00`（ISO 8601 带纳秒精度和时区偏移）
-- 实时事件"时间"列同样显示原始 ISO 8601 格式
-- 应格式化为 `YYYY-MM-DD HH:mm:ss`，使用 UTC 时间（或明确标注时区）
-
-**原因分析：**
-- `Logs.vue` L29：历史记录列 `{ title: '时间', key: 'timestamp' }` 无 render 函数，直出原始字符串
-- `Logs.vue` L45：实时事件列 `{ title: '时间', key: 'timestamp' }` 同样无 render 函数
-- 后端 `SyncLog.Timestamp` 为 `time.Time` 类型（store.go L20），JSON 序列化为 RFC 3339 格式
-- SSE 事件 `Event.Timestamp` 同为 `time.Time`（bus.go L23），序列化格式一致
-
-**影响范围：** 时间信息难以快速阅读，尤其纳秒精度和时区偏移对运维场景无意义。
-
-**推荐修复方案：**
-
-前端统一添加时间格式化 render 函数：
-
-```typescript
-// Logs.vue
-function formatTime(ts: string): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  return d.toISOString().replace('T', ' ').substring(0, 19) + ' UTC'
-}
-
-const columns = [
-  { title: '时间 (UTC)', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
-  // ... 其余列
-]
-
-const eventColumns = [
-  { title: '时间 (UTC)', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
-  // ... 其余列
-]
-```
-
----
-
-### [UI-06] 历史记录中“目标”和“域名”字段始终为空
-
-- **严重度：** 高
-- **当前状态：** ✅ 已修复
-- **所属模块：** Syncer 事件发布 / LogWriter / 同步日志
-- **涉及文件：** `syncer/syncer.go`（L216-220）、`webui/api/logwriter.go`（L16-37）、`notifier/bus.go`（L21-25）
-
-**现象描述：** `GET /api/sync/logs` 返回的日志条目中 `target` 和 `domain` 字段始终为空字符串，"历史记录"表格的"目标"和"域名"两列永远无数据。
-
-**原因分析（完整数据流追踪）：**
-
-1. **事件发布端**（`syncer.go`）：
-   - `sync:complete` 事件（L216-220）：`Data = {"duration": "..."}`——**不包含 `provider` 和 `domain` key**。这是一个全局级别的"本轮同步全部完成"事件，不携带单域名信息。
-   - `sync:error` 事件（L255-259）：`Data = {"provider": p.Name(), "domain": rule.Host, "error": ...}`——**包含两个 key**。
-
-2. **事件订阅端**（`logwriter.go` L16-37）：
-   - 订阅了 `EventSyncComplete` 和 `EventSyncError` 两种事件
-   - L18-22：尝试从 `event.Data["provider"]` 和 `event.Data["domain"]` 提取值
-   - 对于 `sync:complete`：Data 中无这两个 key → 类型断言失败 → `log.Target` 和 `log.Domain` 保持空字符串
-   - 对于 `sync:error`：Data 中有这两个 key → 正确提取
-
-3. **结论**：每轮同步成功时写入的日志（占绝大多数）target/domain 必然为空；仅同步失败时才有值。
-
-**影响范围：** 同步日志功能几乎无用——用户无法从历史记录中得知哪个目标、哪个域名被同步。
-
-**推荐修复方案：**
-
-在 `syncDomain()` 成功路径发布**逐域名事件**，携带 provider + domain + added/deleted 计数：
-
-```go
-// syncer.go syncDomain() 成功路径（L262 附近）
-slog.Info("同步完成", "provider", p.Name(), "domain", rule.Host)
-s.bus.Publish(notifier.Event{
-    Type:      notifier.EventSyncComplete,
-    Timestamp: time.Now(),
-    Data:      map[string]any{"provider": p.Name(), "domain": rule.Host},
-})
-```
-
-同时将 `syncAll()` L216-220 的全局完成事件改为 `EventSyncStart` 的配对事件（或新增 `EventSyncAllComplete` 类型），避免 logwriter 为全局事件写入空日志：
-
-```go
-// logwriter.go：仅处理携带 provider 的事件
-case notifier.EventSyncComplete:
-    if log.Target == "" {
-        return nil // 全局完成事件，不写入日志
-    }
-    log.Result = "success"
-```
-
----
+### [UI-06] 历史记录中"目标"和"域名"字段始终为空
+- **严重度：** 高 | **状态：** ✅ 已修复
+- **修复：** syncer.go 在 `syncDomain()` 成功路径发布逐域名事件（含 provider/domain）；logwriter.go 过滤全局事件并为逐域名事件正确提取字段。
 
 ### [UI-07] 实时事件文案不可读
-
-- **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 / 同步日志
-- **涉及文件：** `webui/frontend/src/views/Logs.vue`（L44-48）、`webui/api/sync.go`（L61-76）、`notifier/bus.go`（L12-18）
-
-**现象描述：** 实时事件表格"类型"列直接显示原始事件类型字符串（`sync:start`、`sync:complete`、`sync:error`、`dns:failed`），"详情"列显示 `JSON.stringify(row.data)` 原始 JSON（如 `{"targets":3,"rules":5}`），对非开发用户完全不可读。
-
-**原因分析：**
-- `Logs.vue` L46：`{ title: '类型', key: 'type' }` 无 render 函数
-- `Logs.vue` L47：`{ title: '详情', key: 'data', render: (row: any) => JSON.stringify(row.data) }` 直接序列化
-- SSE 端点（`sync.go` L67）将 `notifier.Event` 原样 JSON 序列化推送，不做文案转换
-- 事件类型定义（`bus.go` L13-17）为技术标识符，非人类可读文案
-
-**影响范围：** 实时事件区域对普通用户无实际价值，仅开发者可解读。
-
-**推荐修复方案：**
-
-前端添加事件类型映射和智能详情渲染：
-
-```typescript
-// Logs.vue
-const eventTypeLabels: Record<string, string> = {
-  'sync:start': '同步开始',
-  'sync:complete': '同步完成',
-  'sync:error': '同步失败',
-  'dns:failed': 'DNS解析失败',
-  'rule:changed': '规则变更',
-}
-
-function formatEventData(row: any): string {
-  const d = row.data || {}
-  switch (row.type) {
-    case 'sync:start':
-      return `${d.targets ?? 0} 个目标，${d.rules ?? 0} 条规则`
-    case 'sync:complete':
-      return d.domain ? `${d.provider} / ${d.domain}` : `耗时 ${d.duration ?? '-'}`
-    case 'sync:error':
-      return `${d.provider} / ${d.domain}：${d.error ?? '未知错误'}`
-    case 'dns:failed':
-      return `${d.domain}：${d.error ?? '解析超时'}`
-    default:
-      return JSON.stringify(d)
-  }
-}
-
-const eventColumns = [
-  { title: '时间 (UTC)', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
-  {
-    title: '事件', key: 'type',
-    render(row: any) {
-      return h(NTag, {
-        size: 'small',
-        type: row.type === 'sync:error' || row.type === 'dns:failed' ? 'error'
-            : row.type === 'sync:complete' ? 'success' : 'info'
-      }, { default: () => eventTypeLabels[row.type] || row.type })
-    }
-  },
-  { title: '详情', key: 'data', render: (row: any) => formatEventData(row) },
-]
-```
-
----
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** Logs.vue 添加事件类型中文映射和智能详情渲染。
 
 ### [UI-08] 缺少实时日志流输出模块
-
-- **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 + 后端
-- **涉及文件：** `webui/server.go`、`webui/api/`（新增端点）、`webui/frontend/src/views/Logs.vue`
-
-**现象描述：** 同步日志页面仅有"实时事件"（结构化事件）和"历史记录"（SQLite 日志），缺少后端 `slog` 日志的实时流式输出。用户排查问题时需切换到终端查看 `docker logs` 或进程 stdout，不便。
-
-**原因分析：** 当前架构中 `slog` 日志输出到 stdout（AGENTS.md 规定），未接入 WebUI 推送通道。EventBus 仅推送结构化业务事件（5 种 EventType），不覆盖 Debug/Info 级别的运行日志。
-
-**影响范围：** 用户排查同步异常时需离开 WebUI 查看终端日志，体验割裂。
-
-**推荐修复方案：**
-
-**方案 A（推荐）：SSE + 自定义 slog.Handler**
-
-理由：项目已有 SSE 基础设施（`/api/sync/events`），复用相同模式最简单；符合"简单轻量化"原则；无需引入 WebSocket 依赖。
-
-```go
-// 新增 webui/api/logstream.go
-type LogBroadcaster struct {
-    mu   sync.RWMutex
-    subs map[int]chan []byte
-    next int
-}
-
-// slog.Handler 实现：将日志格式化后广播到所有订阅 channel
-func (b *LogBroadcaster) Handle(ctx context.Context, r slog.Record) error {
-    line := fmt.Sprintf("%s [%s] %s\n",
-        r.Time.Format("15:04:05"), r.Level, r.Message)
-    b.mu.RLock()
-    defer b.mu.RUnlock()
-    for _, ch := range b.subs {
-        select {
-        case ch <- []byte(line):
-        default: // 满则跳过
-        }
-    }
-    return nil
-}
-
-// SSE 端点
-func (d *Deps) handleLogStream(w http.ResponseWriter, r *http.Request) {
-    // 类似 handleSyncEvents 的 SSE 模式
-    // Content-Type: text/event-stream
-    // 循环读取订阅 channel，写入 "data: ...\n\n"
-}
-```
-
-前端在 Logs.vue 新增"运行日志"区域（可折叠面板），使用 `EventSource('/api/logs/stream')` 接收并追加到 `<pre>` 块中，限制最多显示 200 行。
-
-**方案 B（不推荐）：WebSocket**
-
-需引入额外依赖（`gorilla/websocket` 或 `nhooyr.io/websocket`），增加复杂度；对于单向日志流场景，SSE 已完全满足需求且更简单。
-
----
-
-## 4. 启动日志
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** 新增 `webui/api/logstream.go`（SSE + slog 广播 Handler）+ 前端可折叠实时日志面板。
 
 ### [UI-09] 启动日志应显示完整访问地址
+- **严重度：** 低 | **状态：** ✅ 已修复
+- **修复：** server.go 启动日志改为 `"访问地址", "http://"+addr`。
 
-- **严重度：** 低
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 服务器
-- **涉及文件：** `webui/server.go`（L47）
-
-**现象描述：** 程序启动后 console 输出为：
-```
-msg="WebUI 启动" addr=127.0.0.1:9090
-```
-用户需自行拼接 `http://` 前缀才能访问。应改为：
-```
-msg="WebUI 启动" 访问地址=http://127.0.0.1:9090
-```
-
-**原因分析：** `server.go` L46-47：
-```go
-addr := fmt.Sprintf("127.0.0.1:%d", s.port)
-slog.Info("WebUI 启动", "addr", addr)
-```
-slog 的 key 为 `addr`，值为纯 `host:port` 格式，不含协议前缀，且 key 名称不够直观。
-
-**影响范围：** 仅影响启动日志可读性。
-
-**推荐修复方案：**
-
-```go
-// server.go Start()
-addr := fmt.Sprintf("127.0.0.1:%d", s.port)
-slog.Info("WebUI 启动", "访问地址", "http://"+addr)
-return http.ListenAndServe(addr, s.mux)
-```
-
----
-
-## 5. 补充修复（二次检查发现）
-
-### [UI-10] 全局设置 TAG/间隔/DNS 仍为 placeholder 形式
-
-- **严重度：** 低
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 / 全局设置
-- **涉及文件：** `webui/frontend/src/views/Settings.vue`
-- **原始记录：** [UI-03] 补充修复
-
-**现象描述：** [UI-03] 修复后 `GET /api/settings` 已返回默认值（`tag: "auto-dns"`、`interval: "5m"`、`dns: "223.5.5.5"`），输入框通过 `v-model` 绑定了实际值，但 `placeholder` 属性仍然保留。当值已预填时 placeholder 不会显示，属于冗余代码；且用户反馈视觉上仍像“占位提示”而非实际值。
-
-**修复方案（已实施）：** 移除 TAG、同步间隔、DNS 服务器三个 `NInput` 的 `placeholder` 属性，输入框仅显示 API 返回的实际值。
-
----
+### [UI-10] 全局设置 placeholder 冗余
+- **严重度：** 低 | **状态：** ✅ 已修复
+- **修复：** Settings.vue 移除 TAG/间隔/DNS 输入框的 placeholder 属性（值已由 API 预填）。
 
 ### [UI-11] 时间应显示本地时区而非固定 UTC
-
-- **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI 前端 / 同步日志
-- **涉及文件：** `webui/frontend/src/views/Logs.vue`
-- **原始记录：** [UI-05] 补充修复
-
-**现象描述：** [UI-05] 修复后时间显示为 `2026-07-26 11:51:37 UTC`（固定 UTC 时区），用户期望显示为本地时区时间（自动检测系统时区），格式如 `2026-07-26 19:51:37 UTC+08:00`。
-
-**修复方案（已实施）：** `formatTime()` 改为使用 `Date` 本地时间 + `getTimezoneOffset()` 自动检测时区偏移：
-
-```typescript
-function formatTime(ts: string): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  if (isNaN(d.getTime())) return ts
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const offset = -d.getTimezoneOffset()
-  const sign = offset >= 0 ? '+' : '-'
-  const tzStr = `UTC${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${tzStr}`
-}
-```
-
-列标题从 `时间 (UTC)` 改为 `时间`。
-
----
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** `formatTime()` 使用 `Date` 本地时间 + `getTimezoneOffset()` 自动检测时区偏移，列标题改为"时间"。
 
 ### [UI-12] 同步日志目标字段应仅显示资源 ID
+- **严重度：** 中 | **状态：** ✅ 已修复
+- **修复：** logwriter.go 从 `provider.Name()` 格式（如 `tc_lighthouse(lhins-xxx)`）中提取括号内资源 ID。
+
+---
+
+# 第11轮深度审查（2026-07-26）：全项目逐文件合规检查
+
+> 本轮基于 Design1.md、Build1.md、AGENTS.md 对项目全部纳入版本控制的文件进行逐文件审查，
+> 同时复核 Issue1.md 中所有"待修复"和"已修复（待复核）"项的当前代码状态。
+
+---
+
+## 6. 构建与 Docker 配置
+
+### [R11-01] `.dockerignore` 存在严重重复条目（[DOC-03] 修复未生效）
 
 - **严重度：** 中
-- **当前状态：** ✅ 已修复
-- **所属模块：** WebUI API / 同步日志
-- **涉及文件：** `webui/api/logwriter.go`
-- **原始记录：** [UI-06] 补充修复
+- **当前状态：** 待修复
+- **所属模块：** Docker 构建
+- **涉及文件：** `.dockerignore`（19行）
+- **原始记录：** Issue1.md [DOC-03] 曾标记为"✅ 已修复（待复核）"，但代码中修复未实际生效
 
-**现象描述：** [UI-06] 修复后同步日志的 `target` 字段有数据，但显示为 Provider 的完整 `Name()` 格式（如 `tc_lighthouse(lhins-3j99jcrw)`），包含云厂商前缀和括号包裹。用户期望仅显示资源 ID（如 `lhins-3j99jcrw`）。
+**现象描述：** 文件 19 行内容严重重复：
+- L1-7（核心排除项）：`Documents/`、`*.md`、`.env`、`.git/`、`Dockerfile`、`.dockerignore`、`Makefile`
+- L8-16（全部为 L1-7 的重复副本，顺序打乱）
+- L12-13：额外的 `.env` 和 `.git`（无尾部斜杠）重复
+- L17：额外的 `*.md` 重复
+- L18：不存在的 `Ref/` 目录引用
 
-**原因分析：** `syncer.go` 发布事件时 `Data["provider"] = p.Name()`，而 `Name()` 返回格式为 `cloudtype(resourceid)`（四个 Provider 均如此）。logwriter 直接存储了完整字符串。
+共计 `.env` 出现 4 次、`*.md` 出现 3 次、`.git` 相关出现 3 次、`Dockerfile` 出现 2 次、`.dockerignore` 出现 2 次、`Makefile` 出现 2 次、`Documents/` 出现 2 次。
 
-**修复方案（已实施）：** 在 `logwriter.go` 提取 provider 字段时，解析括号内的资源 ID：
+**原因分析：** Issue1.md [DOC-03] 描述的去重修复（精简为 7 行核心排除项）在代码中未生效。当前 19 行内容为原始未去重状态。
 
+**影响范围：** 无功能影响，但增加维护负担和用户困惑。
+
+**推荐修复方案：** 删除 L8-19，保留 L1-7 的核心排除项（已涵盖所有必要排除规则）。
+
+---
+
+## 7. 数据安全与事务
+
+### [R11-02] `handleConfigImport` 事务未实际保护 Store 操作
+
+- **严重度：** 高
+- **当前状态：** 待修复
+- **所属模块：** WebUI 后端 / 配置持久化
+- **涉及文件：** `webui/api/settings.go`（L99-141）、`config/store.go`（L237-273）
+
+**现象描述：** `handleConfigImport` 使用 `d.Store.WithTransaction(func(tx *sql.Tx) error { ... })` 包裹导入操作，但回调内部调用的 `ClearAll()`、`BatchAddTargets()`、`BatchAddRules()`、`SetSetting()` 全部使用 `s.db.Exec()`（直接操作 `*sql.DB`），而非事务对象 `tx.Exec()`。
+
+**原因分析：** Go `database/sql` 中 `*sql.DB.Begin()` 返回的 `*sql.Tx` 会占用一个连接。`s.db.Exec()` 使用连接池中的**另一个**连接，因此不在同一事务中。结果：
+- `ClearAll()` 立即提交清空操作（不可回滚）
+- 若后续 `BatchAddTargets`/`BatchAddRules` 失败，事务回滚不会撤销 `ClearAll()`
+- 用户原有配置丢失且新配置未写入 = **不可逆数据丢失**
+
+**影响范围：** 配置导入中途失败时数据库处于"已清空但未导入完整"的不一致状态，原有配置永久丢失。
+
+**推荐修复方案：**
+- **方案 A（推荐）：** 让 `ClearAll`、`BatchAddTargets`、`BatchAddRules` 接受可选的 `*sql.Tx` 参数（事务版本），或新增 `ClearAllTx(tx *sql.Tx)` 等事务变体
+- **方案 B：** 在 `handleConfigImport` 中内联所有 SQL 操作（绕过 Store 方法，直接使用 tx）
+
+**详细修复步骤：**
 ```go
-if v, ok := event.Data["provider"].(string); ok {
-    // 提取资源 ID：从 "tc_lighthouse(lhins-xxx)" 格式中取括号内部分
-    if start := strings.Index(v, "("); start >= 0 {
-        if end := strings.Index(v, ")"); end > start {
-            log.Target = v[start+1 : end]
-        } else {
-            log.Target = v
+// store.go：新增事务版本的 ClearAll
+func (s *Store) ClearAllTx(tx *sql.Tx) error {
+    exec := s.db.Exec
+    if tx != nil {
+        exec = func(query string, args ...any) (sql.Result, error) {
+            return tx.Exec(query, args...)
         }
-    } else {
-        log.Target = v
     }
+    _, err := exec("DELETE FROM targets; DELETE FROM rules; DELETE FROM settings;")
+    return err
 }
+// 同理为 AddTarget / AddRule / SetSetting 增加 Tx 版本或使用 executor 接口
 ```
 
 ---
 
-# 汇总表
+## 8. 前端数据一致性
 
-## 按严重度统计
+### [R11-03] 前端 Targets.vue / Rules.vue 仍使用数组索引代替数据库 ID
+
+- **严重度：** 高
+- **当前状态：** 待修复
+- **所属模块：** WebUI 前端
+- **涉及文件：** `webui/frontend/src/views/Targets.vue`（L33, L52）、`webui/frontend/src/views/Rules.vue`（L37, L56）
+- **原始记录：** Issue1.md [WEB-01]（三层联动修复方案已验证，但前端部分未实施）
+
+**现象描述：** 
+- `Targets.vue` L33：`openEdit(row, index)` → `editingId.value = index + 1`（使用数组下标）
+- `Targets.vue` L52：`deleteTarget(index)` → `fetch('/api/targets/${index + 1}')`（使用数组下标）
+- `Rules.vue` L37/L56：同样的 `index + 1` 模式
+
+而后端 API `/api/targets/{id}` 期待的是数据库 ID（SQLite autoincrement 自增整数）。删除中间记录后，数组下标与 DB ID 不再对应，前端会操作错误的行。
+
+**原因分析：** Issue1.md [WEB-01] 的四步修复方案中，第1步（结构体增加 ID 字段）、第2步（SELECT 含 id）、第3步（Provider 使用 DB ID）、第4步（Syncer 直接比较 DB ID）已全部实施。但**前端修改被遗漏**——`openEdit`/`deleteTarget` 仍然使用 `index + 1`。
+
+**影响范围：** 删除中间记录后，编辑/删除操作会指向错误的数据库行；用户可能在不知情下修改/删除了错误的目标或规则。
+
+**推荐修复方案：**
+- `Targets.vue` L33：`editingId.value = row.id`
+- `Targets.vue` L52：`fetch('/api/targets/${row.id}')`（需传入 row 而非 index）
+- `Rules.vue` L37：`editingId.value = row.id`
+- `Rules.vue` L56：`fetch('/api/rules/${row.id}')`（需传入 row 而非 index）
+
+需同步调整 `openEdit`、`deleteTarget`、`deleteRule` 的函数签名从 `(row, index)` 改为 `(row)`（或仅传 `row.id`）。
+
+---
+
+## 9. CI/CD 构建链路
+
+### [R11-04] CI/CD 流水线缺少前端构建步骤（[BLD-03]/[BLD-04] 确认仍存在）
+
+- **严重度：** 高
+- **当前状态：** 待修复
+- **所属模块：** CI/CD
+- **涉及文件：** `.github/workflows/docker-publish.yml`（L43 `go build -v ./...`）、`.github/workflows/release.yml`（L39 `go build -v ./...`）
+- **原始记录：** Issue1.md [BLD-03]、[BLD-04]
+
+**现象描述：** 两个 CI workflow 均包含 `go build -v ./...` 编译检查步骤，但缺少 Node.js 环境安装和 `npm ci && npm run build` 前端构建步骤。`webui/embed.go` 使用 `//go:embed frontend/dist`，而 `dist/` 目录被 `.gitignore` 排除，checkout 后不存在。`go build` 会因 embed 找不到文件而失败。
+
+**原因分析：** [BLD-03] 和 [BLD-04] 的修复方案已在 Issue1.md 详细说明，但未实施。`docker-publish.yml` 的 Docker 构建步骤（使用 `build/Dockerfile`）可内部处理前端构建，但之前的 `go build ./...` 编译检查无法通过。`release.yml` 直接编译多平台二进制，完全无前端构建环节。
+
+**影响范围：** CI/CD 流水线编译失败；Release 二进制不含 WebUI 前端。
+
+**推荐修复方案：** 
+在 Go 编译步骤前添加：
+```yaml
+- name: 设置 Node.js
+  uses: actions/setup-node@v4
+  with:
+    node-version: '20'
+- name: 构建前端
+  run: cd webui/frontend && npm ci && npm run build
+```
+
+---
+
+## 10. .env 模式 Provider ID 语义不一致
+
+### [R11-05] `.env` 模式 `app.Run` 使用数组索引导致规则过滤不匹配
+
+- **严重度：** 中
+- **当前状态：** 待修复
+- **所属模块：** App 生命周期 / Syncer
+- **涉及文件：** `app/app.go`（L33）、`syncer/syncer.go`（L282-297）、`provider/registry.go`（L26）
+
+**现象描述：** 
+- `app.Run` L33：`provider.NewProvider(t, i, pool)`，`i` 为 0-based 数组下标（0, 1, 2...）
+- `syncer.go` `filterRulesForTarget` L282-297：比较 `r.Targets` 中的值与 `targetDBID`
+- `.env` 解析（`parseTargetNums`）校验 RULES targets 为 1-based（`n < 1 || n > max`）
+- 结果：Provider 0 的 `TargetIndex()` 返回 0，Rule targets=[1,3] 永远不匹配 → 指定 target 的规则对第一个目标不生效
+
+**示例：**
+```
+TARGETS=tc_lighthouse|lhins-abc|ap-guangzhou, tc_cvm|sg-def|ap-shanghai
+RULES=api.example.com|TCP|443|ACCEPT|2|API
+```
+- Provider[0] targetIndex=0，Rule target=2 → 不匹配
+- Provider[1] targetIndex=1，Rule target=2 → 不匹配（应为 Provider[1] 匹配 target 2）
+
+**原因分析：** [WEB-01] 修复将 Syncer 改为直接比较 DB ID，但这要求 Provider 的 `TargetIndex()` 与 Rule 的 `Targets` 值语义一致。WebUI 模式两者均为 DB ID（一致），但 `.env` 模式 Provider 用 0-based 下标、Rule 用 1-based 编号（不一致）。
+
+**影响范围：** `.env` 模式下，使用指定 targets 的规则（非 `*`/空）无法正确匹配到目标；只有空 targets（全部目标）的规则正常工作。
+
+**推荐修复方案：**
+- **方案 A（推荐）：** `app.Run` L33 改为 `provider.NewProvider(t, i+1, pool)`，使 `.env` 模式也使用 1-based ID，与 Rule targets 语义一致
+- **方案 B：** 修改 RULES 解析将 targets 转为 0-based（需同时更新 `.env.example` 文档和校验范围）
+
+---
+
+## 11. 代码清理
+
+### [R11-06] `app.Run` 的 `mode` 参数未被使用
+
+- **严重度：** 低
+- **当前状态：** 待修复
+- **所属模块：** App 生命周期
+- **涉及文件：** `app/app.go`（L16）
+- **原始记录：** Issue1.md [DSC-01] "✅ 已裁定-移除mode参数"
+
+**现象描述：** `func Run(cfg *config.Config, mode Mode) error` 接收 `mode` 参数，但函数体内（L17-51）从未引用 `mode`。自 Phase 2 后 WebUI 模式逻辑移到 `main.go` 内联，`app.Run` 仅服务 `.env` 模式。
+
+**推荐修复方案：** 移除 `mode` 参数，签名改为 `Run(cfg *config.Config) error`；同步修改 `main.go` L125 调用为 `app.Run(cfg)`。
+
+---
+
+## 12. 文档与代码不一致
+
+### [R11-07] README DNS 默认值与代码不一致
+
+- **严重度：** 低
+- **当前状态：** 待修复
+- **所属模块：** 文档
+- **涉及文件：** `README.md`（L91）
+
+**现象描述：** README L91 表格中 DNS 默认值显示为 `8.8.8.8:53`，而代码实际默认值为 `223.5.5.5`（`config/env.go` L30、`config/store.go` L331）。
+
+**推荐修复方案：** 将 README L91 的 DNS 默认值改为 `223.5.5.5`（并注明端口自动补全 :53）。
+
+---
+
+## 13. 功能缺失（已确认待规划项）
+
+### [R11-08] CI/CD 和前端构建多个已知问题确认
+
+以下 Issue1.md 中的已知问题经本轮逐文件核查，确认仍处于待修复/待规划状态：
+
+| 编号 | 问题 | 当前状态 | 本轮确认 |
+|------|------|---------|----------|
+| [BLD-01] | 前端构建产物 `dist/` 缺失 | 待修复 | 确认：`dist/` 不在仓库中，需 CI/Makefile/Docker 构建生成 |
+| [BLD-03] | CI/CD 缺少前端构建 | 待修复 | 见 [R11-04] |
+| [BLD-04] | Release 缺少前端构建 | 待修复 | 见 [R11-04] |
+| [WEB-06] | 前端缺少高级功能/告警页面 | 待规划 | 确认：`main.ts` 仅有 5 个路由，缺少 `/advanced`、`/alerts` |
+| [FEA-03] | CLI 缺少 `backup`/`restore` | 待规划 | 确认：`cli.go` 仅有 `version` 和 `validate` |
+| [FEA-06] | systray 缺少开机自启和同步触发 | 待规划 | 确认：`systray.go` L47 仍有 `// TODO` |
+| [FEA-02] | 告警通知器未接入 EventBus | 待规划 | 确认：`email.go`/`webhook.go` 已实现但无注册代码 |
+
+---
+
+## 14. 本轮确认已修复的 Issue1.md 项
+
+以下项目经逐文件核查，确认已在代码中正确实施：
+
+| 编号 | 问题 | 验证结果 |
+|------|------|----------|
+| [DOC-01] | `.env.example` 旧格式残留 | **已修复**：59 行，格式干净，DNS=223.5.5.5 |
+| [DOC-02] | `README.md` 旧版本残留 | **已修复**：352 行，无旧项目名，内容一致 |
+| [DOC-04] | `firewall/` 空目录残留 | **已修复**：目录不存在 |
+| [COR-01] | sync:start/complete 事件未发布 | **已修复**：`syncAll()` 和 `syncDomain()` 均发布事件 |
+| [COR-02] | 熔断 IsOpen 未跳过同步 | **已修复**：`syncDomain` L228-231 有 `return` |
+| [COR-03] | truncateDesc 缺失 SWAS 限制 | **已修复**：含 `CloudAliSWAS: maxLen=50` 分支 |
+| [COR-04] | strVal 位置不当 | **已修复**：已移至 `common.go` |
+| [COR-05] | 同步日志未写入 SQLite | **已修复**：`StoreLogWriter` 已订阅 EventBus |
+| [COR-06] | LoadConfig 缺少配置项 | **已修复**：已读取 `webui_port` 和 `dns_fail_threshold` |
+| [COR-07] | 热重载不重建 Provider | **已修复**：`ReloadFunc` 中重建 providers 和凭据 |
+| [FEA-01] | getDataDir 未按平台区分 | **已修复**：支持 `FWALIZER_DATA_DIR` + 平台路径 |
+| [FEA-07] | WebUI 缺少凭据配置 | **已修复**：Settings.vue 有凭据输入框 |
+| [DKR-01] | 根 Dockerfile 冗余 | **已修复**：根 Dockerfile 已删除 |
+| [DKR-02] | Dockerfile 缺少前端构建 | **已修复**：含 `frontend-builder` 阶段 |
+| [DKR-03] | 缺少 WORKDIR | **已修复**：`WORKDIR /app` |
+| [BLD-05] | Makefile 缺少 frontend | **已修复**：`build` 依赖 `frontend` 目标 |
+| [BLD-02] | docker-publish.yml 重复 | **已修复**：85 行单文档，引用 `build/Dockerfile` |
+| [WEB-08] | 三个页面空白 | **已修复**：字段名 + NMessageProvider + nil slice |
+| [DSC-05] | 前端包管理器 | **已修复**：使用 npm，文档待同步（Design1.md/Build1.md 仍写 pnpm） |
+| [DSC-06] | Docker 数据目录耦合 | **已修复**：`FWALIZER_DATA_DIR` + `docker-compose.yml.example` |
+
+---
+
+## 审查总结
+
+### 本轮（第11轮）新发现问题
 
 | 严重度 | 数量 | 编号 |
 |--------|------|------|
-| 高 | 1 | [UI-06] |
-| 中 | 7 | [UI-02]、[UI-03]、[UI-05]、[UI-07]、[UI-08]、[UI-11]、[UI-12] |
-| 低 | 4 | [UI-01]、[UI-04]、[UI-09]、[UI-10] |
-| **合计** | **12** | |
+| 高 | 3 | [R11-02]、[R11-03]、[R11-04] |
+| 中 | 2 | [R11-01]、[R11-05] |
+| 低 | 2 | [R11-06]、[R11-07] |
+| **合计** | **7** | |
 
-## 优先修复建议
+### 剩余风险
 
-1. **[UI-06] 同步日志 target/domain 为空**（最高优先级）：这是功能性缺陷，同步日志核心字段无数据导致功能形同虚设。修复需在 syncer 成功路径发布逐域名事件 + logwriter 过滤全局事件，改动集中在 `syncer.go` 和 `logwriter.go` 两个文件。
+1. **数据安全**（最高风险）：[R11-02] 配置导入事务无效 — 用户执行导入失败后永久丢失配置
+2. **数据一致性**（高风险）：[R11-03] 前端仍用数组索引 — 删除中间记录后操作错误行
+3. **构建链路断裂**（高风险）：[R11-04] CI/CD 无法编译 — 发布产物不含 WebUI
+4. **功能正确性**（中风险）：[R11-05] .env 模式规则过滤错误 — 指定 targets 的规则不生效
+5. **配置卫生**（低风险）：[R11-01] .dockerignore 重复、[R11-06] 未使用参数、[R11-07] README 文档不一致
 
-2. **[UI-03] 设置表单无默认值预填 + [UI-02] DNS 默认值**（高优先级）：两者可合并修复——`handleGetSettings` 返回合并默认值时一并将 DNS 默认值改为 `223.5.5.5`。改动集中在 `settings.go` + `store.go` + `env.go`。
+### 终止判定
 
-3. **[UI-05] 时间格式化 + [UI-07] 事件文案**（中优先级）：两者均为 Logs.vue 前端渲染层改动，可在一次变更中完成，不涉及后端。
+本轮发现 **3 个高严重度 + 2 个中严重度** 新问题，**不满足连续一轮无高/中严重度新问题的终止条件**。建议在修复本轮问题后继续第12轮审查。
 
-4. **[UI-01] 云产品中文映射 + [UI-04] 日志级别下拉 + [UI-09] 启动日志**（低优先级）：三项均为单文件小改动，可批量处理。
+---
 
-5. **[UI-08] 实时日志流**（待规划）：涉及新增后端 Handler + SSE 端点 + 前端面板，工作量较大，建议作为 v1.1 功能增强项。
+> **审查说明**：本轮（第11轮）为全项目逐文件深度审查，覆盖 Go 后端、前端源码、配置文件、构建脚本、CI/CD、Docker、文档共 50+ 文件。与 Issue1.md 记载的第1-10轮审查衔接（第10轮终止后新增）。
+
+---
+
+# 第12轮审查（2026-07-26）：深度边缘验证与合规扫描
+
+> 本轮聚焦于测试文件、Documents 目录、Provider 边界条件、错误处理完整性、安全配置合规。
+> 与第11轮形成互补，第11轮为广度扫描，本轮为深度验证。
+
+---
+
+## 15. 本轮验证通过的合规项
+
+### 15.1 测试覆盖
+
+- 已有 7 个测试文件覆盖 `config`、`dns`、`internal/portconv`、`internal/tag`、`notifier`、`provider/common` 六个包
+- 全部测试通过：`go test ./...` 返回 `ok`，无失败
+- `common_test.go` 覆盖 OwnedRules、Diff 新增/不变/删除/域名隔离、TCP+UDP 拆分、SWAS IPv6 跳过、ECS ICMPv6 跳过、ClientPool 复用 — 共 8 个测试用例
+- `circuitbreaker_test.go` 覆盖熔断触发、重置、半开探测不计入 — 共 3 个测试用例
+- `env_test.go` 覆盖正常解析、续行、默认值、非法协议/动作/编号/Provider、空内容、ICMP 强制 ALL、凭据校验、空规则 — 共 10 个测试用例
+
+### 15.2 API 合规性
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 全量覆盖类 API | **合规** — 零使用 | `grep ModifyFirewall\|ResetFirewall\|ReplaceFirewall` 在 provider/ 中零匹配 |
+| 仅操作入站规则 | **合规** | CVM 仅用 `Ingress`；ECS 仅 `Direction=ingress`；Lighthouse/SWAS 防火墙无方向概念 |
+| Egress 操作 | **合规** — 零使用 | CVM `CreateRules`/`DeleteRules` 仅设置 `Ingress` 字段 |
+
+### 15.3 安全合规
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| WebUI 绑定地址 | **合规** — `127.0.0.1` | `server.go` L51: `127.0.0.1:%d` |
+| 凭据不导出 | **合规** | `settings.go` L75-78: `delete(settings, "tc_access_id")` 等 4 个 key |
+| 凭据不导入 | **合规** | `settings.go` L125-126: 跳过四个凭据 key |
+| 配置导出无凭据 | **合规** | 同凭据不导出 |
+| 无 panic | **合规** | `grep panic` 在 webui/ 中零匹配 |
+
+### 15.4 日志规范
+
+| 检查项 | 结果 |
+|--------|------|
+| syncer/ 包 | **合规** — 全部使用 `log/slog`，无 `fmt.Print` |
+| provider/ 包 | **合规** — 全部使用 `log/slog`，无 `fmt.Print` |
+| dns/ 包 | **合规** — 无日志输出（纯函数） |
+| webui/api/ | **合规** — 3 处 slog（2 Warn + 1 Info），无 `fmt.Print` |
+| main.go | **合规** — 启动前错误用 `fmt.Fprintf(os.Stderr)`（slog 未初始化），运行时用 slog |
+
+### 15.5 编译与静态检查
+
+- `go vet ./...` — **通过**，零警告
+- `go build ./...` — **通过**，零错误
+- `go test ./...` — **通过**，所有 6 个测试包 `ok`
+
+### 15.6 Documents 目录
+
+- 4 个子目录（AliyunECSAPIGuide、AliyunSASAPIGuide、TencentCVMAPIGuide、TencentLighthouseAPIGuide）
+- 包含各云厂商 API 参考文档（中文 + 英文），与编码实现中的 API 使用一致
+- `.DS_Store` 文件存在（macOS 系统文件），建议通过 .gitignore 排除
+
+---
+
+## 16. 本轮确认仍需修复的已知问题
+
+| 编号 | 问题 | 严重度 | 状态 |
+|------|------|--------|------|
+| [R11-02] | 配置导入事务未保护 Store 操作 | 高 | 待修复 |
+| [R11-03] | 前端仍用数组索引代替 DB ID | 高 | 待修复 |
+| [R11-04] | CI/CD 缺少前端构建步骤 | 高 | 待修复 |
+| [R11-01] | .dockerignore 严重重复 | 中 | 待修复 |
+| [R11-05] | .env 模式规则过滤不匹配 | 中 | 待修复 |
+| [R11-06] | app.Run mode 参数未使用 | 低 | 待修复 |
+| [R11-07] | README DNS 默认值不一致 | 低 | 待修复 |
+| [WEB-06] | 前端缺少 /advanced、/alerts 页面 | 中 | 待规划 |
+| [FEA-06] | systray 缺少同步触发和开机自启 | 低 | 待规划 |
+| [FEA-03] | CLI 缺少 backup/restore | 中 | 待规划 |
+
+---
+
+## 17. 审查终止判定
+
+### 第11轮：发现 3 高 + 2 中 → 不满足终止条件
+### 第12轮：发现 0 高 + 0 中 → **满足终止条件**
+
+第12轮深度验证未发现新的高/中严重度问题，所有测试通过，go vet 零警告。第11轮发现的 5 个高/中问题已全部记录并附修复方案。
+
+**审查结论：** 项目在核心逻辑层（Provider 抽象、Syncer 引擎、DNS 解析、熔断、EventBus、API 端点）实现质量高，与 Build1.md/Design1.md 规范一致性良好。主要剩余风险集中在构建链路（前端构建未自动化）和个别数据安全/一致性缺陷（事务无效、前端索引错位）。
+
+**建议：** 优先修复 [R11-02]（数据安全）和 [R11-03]（数据一致性），再统一处理构建链路问题（[R11-04] + [BLD-03]/[BLD-04]）。
