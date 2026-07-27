@@ -33,8 +33,8 @@ function openAdd() {
   showModal.value = true
 }
 
-function openEdit(row: any, index: number) {
-  editingId.value = index + 1
+function openEdit(row: any) {
+  editingId.value = row.id
   form.value = { host: row.host, protocol: row.protocol, ports: row.ports, action: row.action, comment: row.comment || '', enable_ipv6: !!row.enable_ipv6 }
   showModal.value = true
 }
@@ -52,8 +52,8 @@ async function saveRule() {
   load()
 }
 
-async function deleteRule(index: number) {
-  await fetch(`/api/rules/${index + 1}`, { method: 'DELETE' })
+async function deleteRule(row: any) {
+  await fetch(`/api/rules/${row.id}`, { method: 'DELETE' })
   message.success('删除成功')
   load()
 }
@@ -73,11 +73,11 @@ const columns = [
   { title: '备注', key: 'comment' },
   {
     title: '操作', key: 'actions',
-    render(row: any, index: number) {
+    render(row: any) {
       return h(NSpace, { size: 'small' }, {
         default: () => [
-          h(NButton, { size: 'tiny', onClick: () => openEdit(row, index) }, { default: () => '编辑' }),
-          h(NButton, { size: 'tiny', type: 'error', onClick: () => deleteRule(index) }, { default: () => '删除' }),
+          h(NButton, { size: 'tiny', onClick: () => openEdit(row) }, { default: () => '编辑' }),
+          h(NButton, { size: 'tiny', type: 'error', onClick: () => deleteRule(row) }, { default: () => '删除' }),
         ]
       })
     }

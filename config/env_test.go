@@ -15,7 +15,7 @@ TC_ACCESS_ID=AKIDxxxx
 TC_ACCESS_KEY=secretxxxx
 
 # 域名规则
-RULES=api.example.com|TCP|443,80|ACCEPT||生产API, vpn.example.com|UDP|1194|ACCEPT|2|VPN接入
+RULES=api.example.com|TCP|443,80|ACCEPT||生产API, vpn.example.com|UDP|1194|ACCEPT|1|VPN接入
 
 # 全局设置
 TAG=auto-dns
@@ -51,8 +51,8 @@ LOG_LEVEL=debug
 	if cfg.DomainRules[0].Comment != "生产API" {
 		t.Errorf("DomainRules[0].Comment = %s, want 生产API", cfg.DomainRules[0].Comment)
 	}
-	if cfg.DomainRules[1].Targets[0] != 2 {
-		t.Errorf("DomainRules[1].Targets[0] = %d, want 2", cfg.DomainRules[1].Targets[0])
+	if cfg.DomainRules[1].Targets[0] != 1 {
+		t.Errorf("DomainRules[1].Targets[0] = %d, want 1", cfg.DomainRules[1].Targets[0])
 	}
 	if cfg.Interval != 10*time.Minute {
 		t.Errorf("Interval = %v, want 10m", cfg.Interval)

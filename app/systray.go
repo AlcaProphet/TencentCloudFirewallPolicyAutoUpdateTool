@@ -10,16 +10,21 @@ import (
 	"fyne.io/systray"
 )
 
+var quitCh = make(chan struct{})
+
+// QuitCh 返回退出信号 channel（供 main.go 监听）
+func QuitCh() <-chan struct{} { return quitCh }
+
 // RunSystray 启动系统托盘（仅桌面端编译）
-func RunSystray(openURL string) {
+func RunSystray(openURL string, onSyncTrigger func()) {
 	systray.Run(func() {
-		onSystrayReady(openURL)
+		onSystrayReady(openURL, onSyncTrigger)
 	}, func() {
 		onSystrayExit()
 	})
 }
 
-func onSystrayReady(openURL string) {
+func onSystrayReady(openURL string, onSyncTrigger func()) {
 	systray.SetTitle("FWAlizer")
 	systray.SetTooltip("FWAlizer - 防火墙 DNS 同步工具")
 
@@ -30,6 +35,8 @@ func onSystrayReady(openURL string) {
 
 	mOpen := systray.AddMenuItem("打开配置面板", "在浏览器中打开 WebUI")
 	mSync := systray.AddMenuItem("立即同步", "手动触发一次同步")
+	systray.AddSeparator()
+	mAutoStart := systray.AddMenuItemCheckbox("开机自启", "启动时自动运行", isAutoStartEnabled())
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("退出", "退出 FWAlizer")
 
@@ -44,9 +51,18 @@ func onSystrayReady(openURL string) {
 				openBrowser(openURL)
 			case <-mSync.ClickedCh:
 				slog.Info("手动触发同步")
-				// TODO: 通过 channel 通知 Syncer 立即同步
+				onSyncTrigger()
+			case <-mAutoStart.ClickedCh:
+				if mAutoStart.Checked() {
+					disableAutoStart()
+					mAutoStart.Uncheck()
+				} else {
+					enableAutoStart()
+					mAutoStart.Check()
+				}
 			case <-mQuit.ClickedCh:
 				systray.Quit()
+				close(quitCh)
 				return
 			}
 		}

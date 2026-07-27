@@ -29,8 +29,8 @@ function openAdd() {
   showModal.value = true
 }
 
-function openEdit(row: any, index: number) {
-  editingId.value = index + 1
+function openEdit(row: any) {
+  editingId.value = row.id
   form.value = { cloud_type: row.cloud_type, region: row.region, resource_id: row.resource_id }
   showModal.value = true
 }
@@ -48,8 +48,8 @@ async function saveTarget() {
   load()
 }
 
-async function deleteTarget(index: number) {
-  await fetch(`/api/targets/${index + 1}`, { method: 'DELETE' })
+async function deleteTarget(row: any) {
+  await fetch(`/api/targets/${row.id}`, { method: 'DELETE' })
   message.success('删除成功')
   load()
 }
@@ -76,11 +76,11 @@ const columns = [
   { title: '地域', key: 'region' },
   {
     title: '操作', key: 'actions',
-    render(row: any, index: number) {
+    render(row: any) {
       return h(NSpace, { size: 'small' }, {
         default: () => [
-          h(NButton, { size: 'tiny', onClick: () => openEdit(row, index) }, { default: () => '编辑' }),
-          h(NButton, { size: 'tiny', type: 'error', onClick: () => deleteTarget(index) }, { default: () => '删除' }),
+          h(NButton, { size: 'tiny', onClick: () => openEdit(row) }, { default: () => '编辑' }),
+          h(NButton, { size: 'tiny', type: 'error', onClick: () => deleteTarget(row) }, { default: () => '删除' }),
         ]
       })
     }

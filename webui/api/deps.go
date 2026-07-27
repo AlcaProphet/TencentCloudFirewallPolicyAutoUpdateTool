@@ -56,6 +56,9 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/settings", d.handlePutSettings)
 	mux.HandleFunc("GET /api/config/export", d.handleConfigExport)
 	mux.HandleFunc("POST /api/config/import", d.handleConfigImport)
+	// 告警配置
+	mux.HandleFunc("GET /api/alerts", d.handleGetAlerts)
+	mux.HandleFunc("PUT /api/alerts", d.handlePutAlerts)
 }
 
 // notifyReload 触发配置重载

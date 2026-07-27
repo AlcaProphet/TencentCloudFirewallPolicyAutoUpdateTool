@@ -88,7 +88,7 @@ docker run -d --name fwalizer --restart=always \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DNS` | `8.8.8.8:53` | 上游 DNS 服务器地址 |
+| `DNS` | `223.5.5.5` | 上游 DNS 服务器地址（端口 :53 自动补全） |
 | `DNS_TIMEOUT` | `10s` | DNS 解析超时时间 |
 | `DNS_FAIL_THRESHOLD` | `5` | 连续失败多少次后触发熔断 |
 
@@ -147,7 +147,7 @@ docker run -d --name fwalizer --restart=always \
 | protocol | 协议：`TCP` / `UDP` / `TCP+UDP` / `ICMP` | `TCP` |
 | ports | 端口：单端口、逗号分隔、范围、`ALL` | `443,80` |
 | action | 动作：`ACCEPT`（允许）/ `DROP`（拒绝） | `ACCEPT` |
-| targets | 目标编号（留空或 `*` = 全部） | `1,3` |
+| targets | 目标编号（从 0 开始，留空或 `*` = 全部） | `0,2` |
 | comment | 可选备注 | `生产API` |
 
 ### 示例
@@ -156,11 +156,11 @@ docker run -d --name fwalizer --restart=always \
 # 单域名 + 多端口
 RULES=api.example.com|TCP|443,80|ACCEPT||生产API
 
-# 指定目标（仅第 2 个 TARGETS 条目）
-RULES=vpn.example.com|UDP|1194|ACCEPT|2|VPN接入
+# 指定目标（仅第 2 个 TARGETS 条目，编号从 0 开始）
+RULES=vpn.example.com|UDP|1194|ACCEPT|1|VPN接入
 
 # 端口范围 + 多目标
-RULES=game.example.com|TCP|8000-8010|ACCEPT|1,3|游戏端口
+RULES=game.example.com|TCP|8000-8010|ACCEPT|0,2|游戏端口
 
 # ICMP（Ping），端口自动设为 ALL
 RULES=ping.example.com|ICMP|ALL|ACCEPT||允许Ping
@@ -170,7 +170,7 @@ RULES=voice.example.com|TCP+UDP|5060|ACCEPT||SIP语音
 
 # 多条规则组合（逗号分隔 + 反斜杠换行）
 RULES=api.example.com|TCP|443|ACCEPT||API, \
-      vpn.example.com|UDP|1194|ACCEPT|2|VPN
+      vpn.example.com|UDP|1194|ACCEPT|1|VPN
 ```
 
 > **注意**：仅支持单台服务器场景（DNS 返回少量 IP），不支持 CDN 等返回大量 IP 的域名。

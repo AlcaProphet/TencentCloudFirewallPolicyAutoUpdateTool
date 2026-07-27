@@ -10,6 +10,8 @@ const router = createRouter({
     { path: '/rules', component: () => import('./views/Rules.vue') },
     { path: '/settings', component: () => import('./views/Settings.vue') },
     { path: '/logs', component: () => import('./views/Logs.vue') },
+    { path: '/advanced', component: () => import('./views/Advanced.vue') },
+    { path: '/alerts', component: () => import('./views/Alerts.vue') },
   ]
 })
 

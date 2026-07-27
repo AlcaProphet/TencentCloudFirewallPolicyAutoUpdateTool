@@ -12,6 +12,8 @@ const menuOptions = [
   { label: '域名规则', key: '/rules' },
   { label: '全局设置', key: '/settings' },
   { label: '同步日志', key: '/logs' },
+  { label: '高级功能', key: '/advanced' },
+  { label: '告警配置', key: '/alerts' },
 ]
 
 function handleMenuUpdate(key: string) {

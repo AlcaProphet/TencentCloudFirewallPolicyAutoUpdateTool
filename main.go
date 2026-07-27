@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
-	"runtime"
+	"syscall"
 
 	"github.com/alcaprophet/fwalizer/app"
 	"github.com/alcaprophet/fwalizer/config"
@@ -39,7 +40,7 @@ func main() {
 		}
 	case app.ModeWebUI:
 		// WebUI 模式：SQLite + HTTP Server + Syncer
-		dataDir := getDataDir()
+		dataDir := config.GetDataDir()
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "创建数据目录失败: %v\n", err)
 			os.Exit(1)
@@ -89,6 +90,25 @@ func main() {
 		s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
 		s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
 
+		// 读取告警配置并注册 Notifier
+		if emailCfg, err := store.GetAlertEmail(); err == nil && emailCfg != nil && emailCfg.Enabled {
+			notifierEmail := notifier.NewEmailNotifier(notifier.EmailConfig{
+				Host: emailCfg.Host, Port: emailCfg.Port,
+				User: emailCfg.Username, Pass: emailCfg.Password,
+				From: emailCfg.FromAddr, To: emailCfg.ToAddr,
+			})
+			s.EventBus().Subscribe(notifier.EventSyncError, notifierEmail)
+			s.EventBus().Subscribe(notifier.EventDNSFailed, notifierEmail)
+			slog.Info("邮件告警已启用", "to", emailCfg.ToAddr)
+		}
+
+		if webhookCfg, err := store.GetAlertWebhook(); err == nil && webhookCfg != nil && webhookCfg.Enabled {
+			notifierWH := notifier.NewWebhookNotifier(webhookCfg.URL)
+			s.EventBus().Subscribe(notifier.EventSyncError, notifierWH)
+			s.EventBus().Subscribe(notifier.EventDNSFailed, notifierWH)
+			slog.Info("Webhook 告警已启用", "url", webhookCfg.URL)
+		}
+
 		// 接通热重载：WebUI 修改配置后重新加载并通知 Syncer
 		srv.SetReloadFunc(func() {
 			newCfg, err := store.LoadConfig()
@@ -117,38 +137,28 @@ func main() {
 			slog.Info("WebUI 已启动，请通过浏览器配置云资源凭据和目标", "port", cfg.WebUIPort)
 		}
 		go srv.Start()
+
+		// 启动系统托盘（非桌面构建下为空操作）
+		url := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+		go app.RunSystray(url, func() { s.TriggerSync() })
+
 		go s.Run()
-		syncer.WaitForSignal(s)
+
+		// 等待停止信号（Ctrl+C 或托盘退出）
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+		select {
+		case <-sigCh:
+		case <-app.QuitCh():
+		}
+		slog.Info("收到停止信号，等待当前轮次完成...")
+		s.Stop()
+		s.Wait()
 		return
 	}
 
-	if err := app.Run(cfg, mode); err != nil {
+	if err := app.Run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "运行失败: %v\n", err)
 		os.Exit(1)
-	}
-}
-
-// getDataDir 获取数据存储目录
-func getDataDir() string {
-	// 优先使用环境变量（Docker 部署场景）
-	if dir := os.Getenv("FWALIZER_DATA_DIR"); dir != "" {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "无法获取用户目录: %v\n", err)
-		os.Exit(1)
-	}
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "fwalizer")
-	case "windows":
-		appdata := os.Getenv("APPDATA")
-		if appdata == "" {
-			appdata = filepath.Join(home, "AppData", "Roaming")
-		}
-		return filepath.Join(appdata, "fwalizer")
-	default:
-		return filepath.Join(home, ".config", "fwalizer")
 	}
 }

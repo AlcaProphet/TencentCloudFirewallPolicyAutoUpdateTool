@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -13,6 +16,30 @@ import (
 // Store SQLite 配置持久化
 type Store struct {
 	db *sql.DB
+}
+
+// GetDataDir 获取数据存储目录
+func GetDataDir() string {
+	if dir := os.Getenv("FWALIZER_DATA_DIR"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// 回退到当前目录（极端情况）
+		return "."
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "fwalizer")
+	case "windows":
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			appdata = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(appdata, "fwalizer")
+	default:
+		return filepath.Join(home, ".config", "fwalizer")
+	}
 }
 
 // SyncLog 同步日志记录
@@ -87,6 +114,21 @@ CREATE TABLE IF NOT EXISTS sync_logs (
 	added INTEGER DEFAULT 0,
 	deleted INTEGER DEFAULT 0,
 	error TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS alert_email (
+	id INTEGER PRIMARY KEY DEFAULT 1,
+	enabled INTEGER DEFAULT 0,
+	host TEXT DEFAULT '',
+	port TEXT DEFAULT '587',
+	username TEXT DEFAULT '',
+	password TEXT DEFAULT '',
+	from_addr TEXT DEFAULT '',
+	to_addr TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS alert_webhook (
+	id INTEGER PRIMARY KEY DEFAULT 1,
+	enabled INTEGER DEFAULT 0,
+	url TEXT DEFAULT ''
 );
 `
 	_, err := s.db.Exec(schema)
@@ -270,6 +312,123 @@ func (s *Store) BatchAddRules(rules []DomainRule) error {
 		}
 	}
 	return nil
+}
+
+// ClearAllTx 在事务中清空所有配置
+func (s *Store) ClearAllTx(tx *sql.Tx) error {
+	_, err := tx.Exec("DELETE FROM targets; DELETE FROM rules; DELETE FROM settings;")
+	return err
+}
+
+// AddTargetTx 在事务中添加目标
+func (s *Store) AddTargetTx(tx *sql.Tx, t TargetConfig) error {
+	_, err := tx.Exec(
+		"INSERT INTO targets (cloud_type, region, resource_id) VALUES (?, ?, ?)",
+		string(t.CloudType), t.Region, t.ResourceID,
+	)
+	return err
+}
+
+// AddRuleTx 在事务中添加域名规则
+func (s *Store) AddRuleTx(tx *sql.Tx, r DomainRule) error {
+	targetsJSON, _ := json.Marshal(r.Targets)
+	enableIPv6 := 0
+	if r.EnableIPv6 {
+		enableIPv6 = 1
+	}
+	_, err := tx.Exec(
+		"INSERT INTO rules (host, protocol, ports, action, targets, comment, enable_ipv6) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6,
+	)
+	return err
+}
+
+// SetSettingTx 在事务中写入单项配置
+func (s *Store) SetSettingTx(tx *sql.Tx, key, value string) error {
+	_, err := tx.Exec(
+		"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+		key, value,
+	)
+	return err
+}
+
+// BatchAddTargetsTx 在事务中批量添加目标
+func (s *Store) BatchAddTargetsTx(tx *sql.Tx, targets []TargetConfig) error {
+	for _, t := range targets {
+		if err := s.AddTargetTx(tx, t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// BatchAddRulesTx 在事务中批量添加规则
+func (s *Store) BatchAddRulesTx(tx *sql.Tx, rules []DomainRule) error {
+	for _, r := range rules {
+		if err := s.AddRuleTx(tx, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetAlertEmail 获取邮件告警配置
+func (s *Store) GetAlertEmail() (*AlertEmailConfig, error) {
+	var cfg AlertEmailConfig
+	var enabled int
+	err := s.db.QueryRow("SELECT enabled, host, port, username, password, from_addr, to_addr FROM alert_email WHERE id = 1").
+		Scan(&enabled, &cfg.Host, &cfg.Port, &cfg.Username, &cfg.Password, &cfg.FromAddr, &cfg.ToAddr)
+	if err == sql.ErrNoRows {
+		return &AlertEmailConfig{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	cfg.Enabled = enabled != 0
+	return &cfg, nil
+}
+
+// SaveAlertEmail 保存邮件告警配置
+func (s *Store) SaveAlertEmail(cfg *AlertEmailConfig) error {
+	enabled := 0
+	if cfg.Enabled {
+		enabled = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO alert_email (id, enabled, host, port, username, password, from_addr, to_addr)
+		 VALUES (1, ?, ?, ?, ?, ?, ?, ?)`,
+		enabled, cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.FromAddr, cfg.ToAddr,
+	)
+	return err
+}
+
+// GetAlertWebhook 获取 Webhook 告警配置
+func (s *Store) GetAlertWebhook() (*AlertWebhookConfig, error) {
+	var cfg AlertWebhookConfig
+	var enabled int
+	err := s.db.QueryRow("SELECT enabled, url FROM alert_webhook WHERE id = 1").
+		Scan(&enabled, &cfg.URL)
+	if err == sql.ErrNoRows {
+		return &AlertWebhookConfig{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	cfg.Enabled = enabled != 0
+	return &cfg, nil
+}
+
+// SaveAlertWebhook 保存 Webhook 告警配置
+func (s *Store) SaveAlertWebhook(cfg *AlertWebhookConfig) error {
+	enabled := 0
+	if cfg.Enabled {
+		enabled = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO alert_webhook (id, enabled, url) VALUES (1, ?, ?)`,
+		enabled, cfg.URL,
+	)
+	return err
 }
 
 // AddSyncLog 添加同步日志

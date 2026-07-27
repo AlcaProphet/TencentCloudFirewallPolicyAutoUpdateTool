@@ -39,6 +39,14 @@ jobs:
           go get -u github.com/aliyun/credentials-go
           go mod tidy
 
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 构建前端
+        run: cd webui/frontend && npm ci && npm run build
+
       - name: 编译检查
         run: go build -v ./...
 

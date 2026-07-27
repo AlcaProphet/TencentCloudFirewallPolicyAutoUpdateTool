@@ -13,7 +13,7 @@ import (
 )
 
 // Run 应用主入口
-func Run(cfg *config.Config, mode Mode) error {
+func Run(cfg *config.Config) error {
 	// 1. 初始化日志
 	InitLogger(cfg.LogLevel)
 

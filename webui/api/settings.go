@@ -110,14 +110,14 @@ func (d *Deps) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 	// 在事务中执行导入，失败自动回滚
 	err := d.Store.WithTransaction(func(tx *sql.Tx) error {
 		// 清空旧数据
-		if err := d.Store.ClearAll(); err != nil {
+		if err := d.Store.ClearAllTx(tx); err != nil {
 			return fmt.Errorf("清空旧配置失败: %w", err)
 		}
 		// 写入新数据
-		if err := d.Store.BatchAddTargets(imp.Targets); err != nil {
+		if err := d.Store.BatchAddTargetsTx(tx, imp.Targets); err != nil {
 			return fmt.Errorf("导入目标失败: %w", err)
 		}
-		if err := d.Store.BatchAddRules(imp.Rules); err != nil {
+		if err := d.Store.BatchAddRulesTx(tx, imp.Rules); err != nil {
 			return fmt.Errorf("导入规则失败: %w", err)
 		}
 		for k, v := range imp.Settings {
@@ -125,7 +125,7 @@ func (d *Deps) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 			if k == "tc_access_id" || k == "tc_access_key" || k == "ali_access_id" || k == "ali_access_key" {
 				continue
 			}
-			if err := d.Store.SetSetting(k, v); err != nil {
+			if err := d.Store.SetSettingTx(tx, k, v); err != nil {
 				return fmt.Errorf("导入设置失败: %w", err)
 			}
 		}

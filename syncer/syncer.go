@@ -89,6 +89,9 @@ func (s *Syncer) Stop() {
 	close(s.stopCh)
 }
 
+// Wait 等待 Syncer 完全退出（Stop 后调用）
+func (s *Syncer) Wait() { <-s.doneCh }
+
 // Reload 热重载配置
 func (s *Syncer) Reload(cfg *config.Config) {
 	s.configCh <- cfg

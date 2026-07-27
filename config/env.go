@@ -245,7 +245,7 @@ func splitRuleEntries(s string) []string {
 	return entries
 }
 
-// parseTargetNums 解析 "1,3" → []int{1,3}，并校验范围
+// parseTargetNums 解析 "0,2" → []int{0,2}，并校验范围
 func parseTargetNums(s string, max int) ([]int, error) {
 	parts := strings.Split(s, ",")
 	var nums []int
@@ -254,8 +254,8 @@ func parseTargetNums(s string, max int) ([]int, error) {
 		if err != nil {
 			return nil, fmt.Errorf("targets 编号不合法: %s", p)
 		}
-		if n < 1 || n > max {
-			return nil, fmt.Errorf("targets 编号 %d 超出范围 [1,%d]", n, max)
+		if n < 0 || n >= max {
+			return nil, fmt.Errorf("targets 编号 %d 超出范围 [0,%d]", n, max-1)
 		}
 		nums = append(nums, n)
 	}

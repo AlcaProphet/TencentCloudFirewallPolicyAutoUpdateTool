@@ -5,14 +5,3 @@ Documents/
 Dockerfile
 .dockerignore
 Makefile
-Documents/
-*.md
-.env
-.git/
-.env
-.git
-Dockerfile
-.dockerignore
-Makefile
-*.md
-Ref/

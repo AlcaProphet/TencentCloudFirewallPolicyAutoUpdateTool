@@ -54,6 +54,23 @@ type DomainRule struct {
 	EnableIPv6 bool   `json:"enable_ipv6"` // 是否解析 AAAA 记录，默认 false
 }
 
+// AlertEmailConfig SMTP 邮件告警配置
+type AlertEmailConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	FromAddr string `json:"from_addr"`
+	ToAddr   string `json:"to_addr"`
+}
+
+// AlertWebhookConfig Webhook 告警配置
+type AlertWebhookConfig struct {
+	Enabled bool   `json:"enabled"`
+	URL     string `json:"url"`
+}
+
 // Config 全局配置
 type Config struct {
 	TCAccessID       string
