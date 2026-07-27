@@ -24,7 +24,7 @@
 | 工具 | 版本 | 用途 |
 |------|------|------|
 | Go | 1.25+ | 编译（仅开发时需要） |
-| Node.js | 22+（可选） | 前端开发/重新构建时需要 |
+| Node.js | 20+（可选） | 前端开发/重新构建时需要 |
 | Docker | 20+（可选） | 容器化部署 |
 
 ### 最简配置
@@ -111,6 +111,7 @@ docker run -d --name fwalizer --restart=always \
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `WEBUI_PORT` | `9090` | WebUI 监听端口（绑定 127.0.0.1） |
+| `FWALIZER_DATA_DIR` | 各平台标准路径 | WebUI 数据存储目录（SQLite 数据库位置） |
 
 ---
 
@@ -124,6 +125,8 @@ docker run -d --name fwalizer --restart=always \
 ./fwalizer                    # 从 .env 加载配置并启动同步
 ./fwalizer validate .env      # 仅校验配置，不启动
 ./fwalizer version            # 显示版本号
+./fwalizer backup             # 备份 WebUI 数据库
+./fwalizer restore <文件>     # 从备份恢复数据库
 ```
 
 ### WebUI 模式（桌面/可视化管理）
@@ -131,7 +134,11 @@ docker run -d --name fwalizer --restart=always \
 无 `.env` 文件时自动进入 WebUI 模式，配置存储在 SQLite 数据库中。
 
 - 默认地址：`http://127.0.0.1:9090`
-- 数据路径：`~/.config/fwalizer/config.db`
+- 数据路径（自动选择）：
+  - macOS：`~/Library/Application Support/fwalizer/config.db`
+  - Linux：`~/.config/fwalizer/config.db`
+  - Windows：`%APPDATA%\fwalizer\config.db`
+- 可通过 `FWALIZER_DATA_DIR` 环境变量自定义数据目录
 - 支持通过浏览器添加/编辑/删除云资源目标和域名规则
 - 修改配置后自动热重载，无需重启
 
@@ -174,6 +181,49 @@ RULES=api.example.com|TCP|443|ACCEPT||API, \
 ```
 
 > **注意**：仅支持单台服务器场景（DNS 返回少量 IP），不支持 CDN 等返回大量 IP 的域名。
+
+---
+
+## CLI 数据备份与恢复
+
+WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令备份和恢复：
+
+```bash
+# 备份（自动生成时间戳文件名，保留最新 5 个）
+./fwalizer backup
+
+# 恢复（需先停止运行中的 FWAlizer）
+./fwalizer restore config.db.bak.20260727_120000
+```
+
+> 备份和恢复仅适用于 WebUI 模式；`.env` 模式直接复制 `.env` 文件即可。
+
+---
+
+## 桌面端系统托盘
+
+在 macOS 或 Windows 上使用 `-tags desktop` 编译后，启动 WebUI 模式会自动显示系统托盘图标：
+
+- 托盘菜单：状态指示 / 打开配置面板 / 立即同步 / 开机自启 / 退出
+- 启动后自动打开浏览器进入 WebUI
+- 点击「退出」会等待当前同步轮次完成后再退出进程
+
+```bash
+CGO_ENABLED=1 go build -tags desktop -o fwalizer .
+./fwalizer
+```
+
+> macOS 开机自启通过 LaunchAgent plist 实现，Windows 通过注册表 Run 键实现。
+
+---
+
+## 告警通知
+
+在 WebUI 的「告警配置」页面中，可配置邮件（SMTP）和 Webhook 两种通知方式。启用后在发生同步错误或 DNS 解析失败时自动推送告警：
+
+- **邮件告警**：支持标准 SMTP（如 QQ 邮箱、163 邮箱、企业邮箱）
+- **Webhook 告警**：兼容钉钉/飞书/Slack 的 Webhook 消息格式
+- 告警配置修改后即时生效（热重载），无需重启
 
 ---
 
@@ -343,6 +393,18 @@ make build
 ### 7. WebUI 模式如何切换为 .env 模式？
 
 设置环境变量 `FWALIZER_MODE=env`，或确保 `TARGETS` 环境变量存在（程序会自动检测并进入 .env 模式）。
+
+### 8. 如何备份和恢复 WebUI 配置？
+
+使用 `./fwalizer backup` 备份 SQLite 数据库，`./fwalizer restore <文件>` 恢复。恢复前需先停止 FWAlizer 进程。
+
+### 9. 桌面端托盘不出现？
+
+桌面端功能需要通过 `-tags desktop` 编译标签启用（需 CGO）。标准 `go build` 和 Docker 镜像不包含托盘功能。
+
+### 10. 如何配置告警通知？
+
+启动 WebUI 模式后，在左侧菜单进入「告警配置」页面，填写 SMTP 或 Webhook 信息并启用即可。配置保存后即时生效。
 
 ---
 

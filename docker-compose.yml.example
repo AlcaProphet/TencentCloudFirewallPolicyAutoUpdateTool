@@ -1,8 +1,6 @@
 # FWAlizer Docker Compose 示例
 # 复制此文件为 docker-compose.yml 并根据需要修改
 
-version: "3.8"
-
 services:
   fwalizer:
     # 使用预构建镜像（推荐）
@@ -18,15 +16,15 @@ services:
 
     # ---- 环境变量 ----
     environment:
-      # 数据目录路径（可选，默认 ~/.config/fwalizer）
+      # 数据目录路径（可选，默认按平台自动选择）
       # 在 Docker 中建议显式指定，避免依赖 HOME 目录
       - FWALIZER_DATA_DIR=/app/data
 
-      # 同步间隔（可选，默认 30m）
-      - INTERVAL=30m
+      # 同步间隔（可选，默认 5m）
+      - INTERVAL=5m
 
-      # 自定义 DNS 服务器（可选，默认系统 DNS）
-      # - DNS=8.8.8.8:53
+      # 自定义 DNS 服务器（可选，默认 223.5.5.5）
+      # - DNS=223.5.5.5
 
       # WebUI 端口（可选，默认 9090）
       - WEBUI_PORT=9090
@@ -35,7 +33,7 @@ services:
       - LOG_LEVEL=info
 
     # ---- 端口映射 ----
-    # WebUI 模式：暴露 WebUI 端口
+    # WebUI 模式：暴露 WebUI 端口（绑定 127.0.0.1，仅本机访问）
     ports:
       - "9090:9090"
 
@@ -44,7 +42,7 @@ services:
       # 数据持久化（SQLite 数据库存储于此）
       - fwalizer_data:/app/data
 
-      # .env 模式：挂载配置文件（二选一）
+      # .env 模式：挂载配置文件（二选一，与上方 ports 互斥）
       # - ./config/.env:/app/.env:ro
 
     # ---- 健康检查 ----
@@ -62,14 +60,9 @@ services:
     # ---- 重启策略 ----
     restart: unless-stopped
 
-    # ---- 运行模式 ----
-    # 默认启动为 WebUI 模式
-    # 若需 .env 模式，取消注释下面两行并注释 ports 和 healthcheck：
-    # command: ["/fwalizer"]
-    # 并确保已挂载 .env 文件
-
-    # ---- WebUI 模式 ----
-    command: ["/fwalizer", "webui"]
+    # ---- 运行模式说明 ----
+    # 默认启动为 WebUI 模式（无 .env 文件时自动检测）
+    # 如需 .env 模式，取消注释 volumes 中的 .env 挂载并注释 ports
 
 volumes:
   fwalizer_data:
