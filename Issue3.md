@@ -957,3 +957,96 @@ if webhookCfg, err := store.GetAlertWebhook(); err == nil && webhookCfg != nil &
 | `main.go` | 修改（变量 + 订阅改造 + ReloadFunc） | +55 行 | 🟡 中 |
 
 **总计：** 3 个文件修改，2 个文件新建，净增约 160 行代码。
+
+---
+
+## 全量复核记录
+
+> 复核日期：2026-07-27
+> 复核范围：Issue2.md（R11-01~R11-07 + 待规划项）+ Build2.md（Step 1-11）+ Issue3.md（R13-01~R13-04）
+> 复核方式：逐文件代码审查 + 编译验证 + 全量测试
+
+### 一、Issue2.md 待修复项（R11-01 ~ R11-07）
+
+| 编号 | 问题 | 严重度 | Issue2 状态 | 复核结果 | 证据 |
+|------|------|--------|-----------|---------|------|
+| R11-01 | `.dockerignore` 去重 | 🟡 中 | 待修复 | ✅ **已修复** | 文件 7 行，无重复，无 `Ref/` |
+| R11-02 | 配置导入事务保护 | 🔴 高 | 待修复 | ✅ **已修复** | `store.go` L317-373 含 6 个 Tx 方法；`settings.go` L111-133 使用 Tx 版本 |
+| R11-03 | 前端数组索引→DB ID | 🔴 高 | 待修复 | ✅ **已修复** | `Targets.vue` L32-33/L51-52/L82-83 使用 `row.id`；`Rules.vue` 同理 |
+| R11-04 | CI/CD 前端构建步骤 | 🔴 高 | 待修复 | ✅ **已修复** | `docker-publish.yml` L42-48 + `release.yml` L37-43 均含 `setup-node@v4` + `npm ci && npm run build` |
+| R11-05 | `.env` 模式 0-based 规则过滤 | 🟡 中 | 待修复 | ✅ **已修复** | `env.go` L248 注释 `0,2`、L257 `n<0\|\|n>=max`、L258 `[0,%d]`；测试 L18 `1`、L54 `want 1` |
+| R11-06 | 移除 `app.Run` mode 参数 | ⚪ 低 | 待修复 | ✅ **已修复** | `app.go` L16 `func Run(cfg *config.Config) error`；`main.go` L160 `app.Run(cfg)` |
+| R11-07 | README DNS 默认值同步 | ⚪ 低 | 待修复 | ✅ **已修复** | README L91 `223.5.5.5`，描述 `端口 :53 自动补全`；`grep 8.8.8.8 README.md` 无匹配 |
+
+### 二、Issue2.md 待规划项 → Build2.md Step 8-11
+
+| Issue2 编号 | Build2 Step | 内容 | 严重度 | 复核结果 | 证据 |
+|------------|------------|------|--------|---------|------|
+| WEB-06 | Step 8 | `/advanced` + `/alerts` 页面 + 告警 API | 🟡 中 | ✅ **已完成** | `config.go` L57-72 结构体；`store.go` L118-132 表+CRUD；`alerts.go` 51行 API；`Advanced.vue` 123行；`Alerts.vue` 99行；`main.ts` L13-14 路由；`App.vue` L15-16 菜单 |
+| FEA-02 | Step 9 | 告警通知器接入 EventBus | 🟡 中 | ✅ **已完成** | `main.go` L93-113 初始注册；L139-167 ReloadFunc 热重载重建 |
+| FEA-03 | Step 10 | CLI `backup` / `restore` | 🟡 中 | ✅ **已完成** | `store.go` L21-43 `GetDataDir()`；`cli.go` L45-75 backup/restore case；L80-132 `copyFile`/`cleanOldBackups`/`verifyBackup` |
+| FEA-06 | Step 11 | systray 同步触发 + 开机自启 | ⚪ 低 | ✅ **已完成** | `systray.go` L19 回调参数+L39 菜单+L54 `onSyncTrigger()`；`systray_stub.go` 12行桩；`autostart.go` 53行 macOS；`autostart_darwin.go` 32行；`autostart_windows.go` 66行 registry；`syncer.go` L93 `Wait()`；`main.go` L142-156 |
+
+### 三、Issue3.md 已修复项 + 待决策实施项
+
+| 编号 | 问题 | 严重度 | Issue3 状态 | 复核结果 | 证据 |
+|------|------|--------|-----------|---------|------|
+| R13-01 | `cleanOldBackups` 切片越界 panic | 🔴 高 | ✅ 已修复 | ✅ **确认已修复** | `cli.go` L109 `if len(backups) <= keep { return }` 守卫存在 |
+| R13-02 | 前端未使用的 import | ⚪ 低 | ✅ 已修复 | ✅ **确认已修复** | `Advanced.vue` L2 无 `h` import；`Alerts.vue` L2 无 `NSpace`/`NDivider` import |
+| R13-03 | Windows 开机自启未实现 | 🟡 中 | 🔧 已实施 | ✅ **已实施** | 按平台拆分为 3 个文件：`autostart.go`（macOS 辅助）+ `autostart_darwin.go`（dispatch）+ `autostart_windows.go`（registry） |
+| R13-04 | 告警配置热重载重复订阅 | 🟡 中 | 🔧 已实施 | ✅ **已实施** | `bus.go` L55-69 `Unsubscribe`；`main.go` L93-95 变量 + L98-113 引用保存 + L139-167 热重载重建 |
+
+### 四、编译与测试验证
+
+| 验证命令 | 结果 | 输出摘要 |
+|---------|------|---------|
+| `go build ./...` | ✅ | 零错误 |
+| `go vet ./...` | ✅ | 零警告 |
+| `go test ./...` | ✅ | 6 个测试包全部 `ok`（config/dns/portconv/tag/notifier/provider）|
+| `CGO_ENABLED=1 go build -tags desktop` (macOS) | ✅ | 桌面构建成功 |
+| `GOOS=windows go build -tags desktop ./app/` | ✅ | Windows 交叉编译成功（registry 子包正确链接）|
+| `.github/workflows/*.yml` 语法 | ✅ | YAML 结构正确，`setup-node@v4` + `npm ci && npm run build` 步骤位置正确 |
+| `notifier` 测试（Unsubscribe） | ✅ | 5/5 PASS：`TestEventBus_Publish`、`TestEventBus_NoCrossTalk`、`TestEventBus_Unsubscribe`、`TestEventBus_UnsubscribeIdempotent`、`TestEventBus_UnsubscribeOnlyTargetType` |
+
+### 五、文档一致性
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| `.dockerignore` 7 行核心排除项 | ✅ | `Documents/` `*.md` `.env` `.git/` `Dockerfile` `.dockerignore` `Makefile` |
+| `.env.example` targets 从 0 开始 | ✅ | L35 `从 0 开始`；L40 `ACCEPT\|1`；L41 `ACCEPT\|0,2` |
+| `README.md` DNS 默认值 `223.5.5.5` | ✅ | L91 `223.5.5.5`，描述 `端口 :53 自动补全` |
+| `README.md` RULES targets 从 0 开始 | ✅ | L150 `从 0 开始`；L159 `编号从 0 开始`；L160 `ACCEPT\|1` |
+| `go.mod` `golang.org/x/sys` direct 依赖 | ✅ | L14 `golang.org/x/sys v0.46.0`（无 `// indirect`）|
+
+### 六、跨平台构建标签验证
+
+| 构建场景 | 编译文件组合 | 结果 |
+|---------|------------|------|
+| `go build ./...`（无 tags） | `systray_stub.go`（`!desktop`）— 托盘为空操作 | ✅ |
+| `-tags desktop` (darwin) | `systray.go` + `autostart.go` + `autostart_darwin.go` — 纯标准库 | ✅ |
+| `-tags desktop` (windows) | `systray.go` + `autostart.go` + `autostart_windows.go` — 含 `golang.org/x/sys/windows/registry` | ✅ |
+
+### 七、Build2.md 最终状态
+
+| Step | 编号 | 内容 | 严重度 | 计划状态 | 最终状态 |
+|------|------|------|--------|---------|---------|
+| 1 | R11-01 | `.dockerignore` 去重 | 🟡 中 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 2 | R11-02 | 配置导入事务保护 | 🔴 高 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 3 | R11-03 | 前端数组索引→DB ID | 🔴 高 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 4 | R11-04 | CI/CD 前端构建步骤 | 🔴 高 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 5 | R11-05 | .env 模式 0-based 规则过滤 | 🟡 中 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 6 | R11-06 | 移除 `app.Run` mode 参数 | ⚪ 低 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 7 | R11-07 | README DNS 默认值同步 | ⚪ 低 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 8 | WEB-06 | `/advanced` + `/alerts` 页面 + 告警 API | 🟡 中 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 9 | FEA-02 | 告警通知器接入 EventBus | 🟡 中 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 10 | FEA-03 | CLI `backup` / `restore` | 🟡 中 | ☑ 已完成，待验收 | ✅ **验收通过** |
+| 11 | FEA-06 | systray 同步触发 + 开机自启 | ⚪ 低 | ☑ 已完成，待验收 | ✅ **验收通过** |
+
+### 八、总结
+
+- **Issue2.md** 7 项待修复 + 4 项待规划：**全部完成** ✅
+- **Build2.md** 11 个 Step：**全部验收通过** ✅
+- **Issue3.md** 2 项已修复 + 2 项待决策实施：**全部确认完成** ✅
+- **编译**：`go build ./...` / `go vet ./...` / `go test ./...` **全部通过**（含 desktop + Windows 交叉编译）✅
+- **跨平台**：macOS 桌面构建 + Windows 交叉编译**全部通过** ✅
+- **新发现遗漏**：**无**
