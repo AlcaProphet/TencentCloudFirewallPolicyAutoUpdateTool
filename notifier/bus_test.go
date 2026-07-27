@@ -61,3 +61,55 @@ func TestEventBus_NoCrossTalk(t *testing.T) {
 		t.Errorf("不应收到非订阅类型的事件, got %d", len(sub.events))
 	}
 }
+
+func TestEventBus_Unsubscribe(t *testing.T) {
+	bus := NewEventBus()
+	sub := &mockSubscriber{}
+
+	bus.Subscribe(EventSyncError, sub)
+	bus.Unsubscribe(EventSyncError, sub)
+
+	// 发布不应收到的事件
+	bus.Publish(Event{Type: EventSyncError, Timestamp: time.Now()})
+	time.Sleep(100 * time.Millisecond)
+
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if len(sub.events) != 0 {
+		t.Errorf("取消订阅后不应收到事件, got %d", len(sub.events))
+	}
+}
+
+func TestEventBus_UnsubscribeIdempotent(t *testing.T) {
+	bus := NewEventBus()
+	sub := &mockSubscriber{}
+
+	// 对未订阅的类型取消订阅 — 不应 panic
+	bus.Unsubscribe(EventSyncComplete, sub)
+
+	// 重复取消 — 不应 panic
+	bus.Subscribe(EventSyncError, sub)
+	bus.Unsubscribe(EventSyncError, sub)
+	bus.Unsubscribe(EventSyncError, sub) // 幂等
+}
+
+func TestEventBus_UnsubscribeOnlyTargetType(t *testing.T) {
+	bus := NewEventBus()
+	sub := &mockSubscriber{}
+
+	bus.Subscribe(EventSyncError, sub)
+	bus.Subscribe(EventDNSFailed, sub)
+
+	// 仅取消 sync:error 的订阅
+	bus.Unsubscribe(EventSyncError, sub)
+
+	// 发布 dns:failed — 应收到
+	bus.Publish(Event{Type: EventDNSFailed, Timestamp: time.Now()})
+	time.Sleep(100 * time.Millisecond)
+
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if len(sub.events) != 1 {
+		t.Errorf("dns:failed 应收到事件, got %d", len(sub.events))
+	}
+}

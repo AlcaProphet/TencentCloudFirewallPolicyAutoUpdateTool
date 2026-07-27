@@ -52,6 +52,22 @@ func (b *EventBus) Subscribe(eventType EventType, sub Subscriber) {
 	b.subscribers[eventType] = append(b.subscribers[eventType], sub)
 }
 
+// Unsubscribe 取消订阅。sub 必须与 Subscribe 时传入的为同一实例，否则无法匹配。
+// 若 sub 未找到（已取消或从未订阅），无操作（幂等）。
+func (b *EventBus) Unsubscribe(eventType EventType, sub Subscriber) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	subs := b.subscribers[eventType]
+	for i, s := range subs {
+		if s == sub {
+			b.subscribers[eventType] = append(subs[:i], subs[i+1:]...)
+			return
+		}
+	}
+	// 未找到 — 幂等，不报错
+}
+
 // SubscribeChan 订阅所有事件（channel 方式，用于 SSE 推送）
 // 返回事件 channel 和取消订阅函数
 func (b *EventBus) SubscribeChan() (<-chan Event, func()) {

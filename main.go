@@ -90,22 +90,26 @@ func main() {
 		s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
 		s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
 
+		// 追踪当前活跃的告警 Notifier（用于热重载时取消旧订阅）
+		var currentEmailNotifier notifier.Subscriber
+		var currentWebhookNotifier notifier.Subscriber
+
 		// 读取告警配置并注册 Notifier
 		if emailCfg, err := store.GetAlertEmail(); err == nil && emailCfg != nil && emailCfg.Enabled {
-			notifierEmail := notifier.NewEmailNotifier(notifier.EmailConfig{
+			currentEmailNotifier = notifier.NewEmailNotifier(notifier.EmailConfig{
 				Host: emailCfg.Host, Port: emailCfg.Port,
 				User: emailCfg.Username, Pass: emailCfg.Password,
 				From: emailCfg.FromAddr, To: emailCfg.ToAddr,
 			})
-			s.EventBus().Subscribe(notifier.EventSyncError, notifierEmail)
-			s.EventBus().Subscribe(notifier.EventDNSFailed, notifierEmail)
+			s.EventBus().Subscribe(notifier.EventSyncError, currentEmailNotifier)
+			s.EventBus().Subscribe(notifier.EventDNSFailed, currentEmailNotifier)
 			slog.Info("邮件告警已启用", "to", emailCfg.ToAddr)
 		}
 
 		if webhookCfg, err := store.GetAlertWebhook(); err == nil && webhookCfg != nil && webhookCfg.Enabled {
-			notifierWH := notifier.NewWebhookNotifier(webhookCfg.URL)
-			s.EventBus().Subscribe(notifier.EventSyncError, notifierWH)
-			s.EventBus().Subscribe(notifier.EventDNSFailed, notifierWH)
+			currentWebhookNotifier = notifier.NewWebhookNotifier(webhookCfg.URL)
+			s.EventBus().Subscribe(notifier.EventSyncError, currentWebhookNotifier)
+			s.EventBus().Subscribe(notifier.EventDNSFailed, currentWebhookNotifier)
 			slog.Info("Webhook 告警已启用", "url", webhookCfg.URL)
 		}
 
@@ -131,6 +135,36 @@ func main() {
 			}
 			s.ReloadProviders(newProviders)
 			s.Reload(newCfg)
+
+			// 重建告警订阅（先取消旧订阅，再按最新配置注册）
+			if currentEmailNotifier != nil {
+				s.EventBus().Unsubscribe(notifier.EventSyncError, currentEmailNotifier)
+				s.EventBus().Unsubscribe(notifier.EventDNSFailed, currentEmailNotifier)
+				currentEmailNotifier = nil
+			}
+			if currentWebhookNotifier != nil {
+				s.EventBus().Unsubscribe(notifier.EventSyncError, currentWebhookNotifier)
+				s.EventBus().Unsubscribe(notifier.EventDNSFailed, currentWebhookNotifier)
+				currentWebhookNotifier = nil
+			}
+
+			if emailCfg, err := store.GetAlertEmail(); err == nil && emailCfg != nil && emailCfg.Enabled {
+				currentEmailNotifier = notifier.NewEmailNotifier(notifier.EmailConfig{
+					Host: emailCfg.Host, Port: emailCfg.Port,
+					User: emailCfg.Username, Pass: emailCfg.Password,
+					From: emailCfg.FromAddr, To: emailCfg.ToAddr,
+				})
+				s.EventBus().Subscribe(notifier.EventSyncError, currentEmailNotifier)
+				s.EventBus().Subscribe(notifier.EventDNSFailed, currentEmailNotifier)
+				slog.Info("邮件告警已更新", "to", emailCfg.ToAddr)
+			}
+
+			if webhookCfg, err := store.GetAlertWebhook(); err == nil && webhookCfg != nil && webhookCfg.Enabled {
+				currentWebhookNotifier = notifier.NewWebhookNotifier(webhookCfg.URL)
+				s.EventBus().Subscribe(notifier.EventSyncError, currentWebhookNotifier)
+				s.EventBus().Subscribe(notifier.EventDNSFailed, currentWebhookNotifier)
+				slog.Info("Webhook 告警已更新", "url", webhookCfg.URL)
+			}
 		})
 
 		if len(providers) == 0 {

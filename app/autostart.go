@@ -7,54 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 )
-
-// isAutoStartEnabled 检查是否已注册开机自启
-func isAutoStartEnabled() bool {
-	switch runtime.GOOS {
-	case "darwin":
-		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.fwalizer.agent.plist")
-		_, err := os.Stat(plistPath)
-		return err == nil
-	case "windows":
-		// Windows 注册表检查（简化实现：通过 reg query 命令）
-		// 桌面构建时才编译，此处使用命令行方式避免引入额外依赖
-		return false // 简化：默认未启用
-	default:
-		return false
-	}
-}
-
-// enableAutoStart 启用开机自启
-func enableAutoStart() {
-	exePath, err := os.Executable()
-	if err != nil {
-		slog.Warn("获取可执行文件路径失败", "error", err)
-		return
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		enableAutoStartDarwin(exePath)
-	case "windows":
-		enableAutoStartWindows(exePath)
-	default:
-		slog.Info("当前平台不支持开机自启")
-	}
-}
-
-// disableAutoStart 禁用开机自启
-func disableAutoStart() {
-	switch runtime.GOOS {
-	case "darwin":
-		disableAutoStartDarwin()
-	case "windows":
-		disableAutoStartWindows()
-	default:
-		slog.Info("当前平台不支持开机自启")
-	}
-}
 
 // ─── macOS ───
 
@@ -96,16 +49,4 @@ func disableAutoStartDarwin() {
 		return
 	}
 	slog.Info("开机自启已禁用")
-}
-
-// ─── Windows ───
-
-func enableAutoStartWindows(exePath string) {
-	// 使用 reg add 命令写入注册表（避免引入 golang.org/x/sys/windows/registry）
-	// HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-	slog.Info("Windows 开机自启功能待实现（需注册表操作）", "path", exePath)
-}
-
-func disableAutoStartWindows() {
-	slog.Info("Windows 开机自启禁用待实现")
 }
