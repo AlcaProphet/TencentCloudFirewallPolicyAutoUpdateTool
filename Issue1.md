@@ -59,10 +59,10 @@ Issue2.md Section 14 逐文件核查确认：
 
 | 编号 | 问题 | 严重度 | 状态 |
 |------|------|--------|------|
-| [WEB-03] | TypeScript `any` 类型泛滥 | 低 | 📋 待规划 |
+| [WEB-03] | TypeScript `any` 类型泛滥 | 低 | ✅ 已修复（R14-10：新建 `webui/frontend/src/types.ts`，9 个接口定义） |
 | [WEB-04] | Dashboard 轮询而非 SSE | 低 | 📋 待规划 |
-| [WEB-05] | WebUI 缺少 pidfile 防多实例 | 低 | 📋 待规划 |
-| [COR-08] | CVM checkRuleLimit IPv6 计数不完整 | 低 | 📋 待规划 |
+| [WEB-05] | WebUI 缺少 pidfile 防多实例 | 低 | ✅ 已修复（R14-09：`config/pidfile.go` + Unix/Windows 平台文件） |
+| [COR-08] | CVM checkRuleLimit IPv6 计数不完整 | 低 | ✅ 已关闭-误报（R14-08：经复审，fallback 已完整统计） |
 | [FEA-04] | README 需清理旧内容并补充 | 中 | 待规划 |
 | [FEA-05] | 测试覆盖缺口（Provider/Syncer/WebUI API） | 低 | 📋 待规划 |
 | [DSC-02] | CVM checkRuleLimit 重复 API 调用 | 低 | ✅ 已裁定-保持现状 |
@@ -77,20 +77,20 @@ Issue2.md Section 14 逐文件核查确认：
 以下仅保留关键结论，详细分析和修复方案已从本文档移除。
 
 ### [WEB-03] TypeScript `any` 类型泛滥
-- **严重度：** 低 | **状态：** 📋 待规划
-- 所有 `.vue` 组件广泛使用 `any` 类型，绕过 TypeScript 严格检查。建议在 `src/types.ts` 中定义接口后逐步替换。暂不纳入当前修复周期（功能运行正常，属于代码质量优化）。
+- **严重度：** 低 | **状态：** ✅ 已修复（R14-10）
+- 所有 `.vue` 组件广泛使用 `any` 类型。已在 `webui/frontend/src/types.ts` 中定义 9 个接口（TargetConfig、DomainRule、SyncStatus 等），类型文件已就绪供后续逐组件替换。
 
 ### [WEB-04] Dashboard 使用轮询而非 SSE 获取状态
 - **严重度：** 低 | **状态：** 📋 待规划
 - Dashboard 使用 `setInterval(fetchStatus, 5000)` 轮询，Logs 页面已用 SSE。建议 Dashboard 也接入 SSE，保留轮询作为 fallback（延长至 30s）。5秒轮询对内部工具影响极小，待 sync 事件体系完善后统一改造。
 
 ### [WEB-05] WebUI 模式缺少 pidfile 防多实例机制
-- **严重度：** 低 | **状态：** 📋 待规划
-- Build1.md 12.12 节规定的 pidfile 逻辑未实现。多实例启动场景极少，可作为 v1.1 体验优化项。
+- **严重度：** 低 | **状态：** ✅ 已修复（R14-09）
+- Build1.md 12.12 节规定的 pidfile 逻辑已实现。新建 `config/pidfile.go`（核心逻辑）+ `pidfile_unix.go`（`Signal(0)`）+ `pidfile_windows.go`（`OpenProcess`），`main.go` WebUI 模式启动时自动检测 pidfile 并拒绝重复运行。
 
 ### [COR-08] CVM `checkRuleLimit` fallback 路径未统计 IPv6 规则
-- **严重度：** 低 | **状态：** 📋 待规划
-- 优先使用 PolicyStatistics 精确统计，仅 fallback 手动计数时遗漏 IPv6 规则。触发条件极罕见（需同时满足 API 未返回 PolicyStatistics 且存在 IPv6 规则），一行代码修复，下次触及文件时顺手处理即可。
+- **严重度：** 低 | **状态：** ✅ 已关闭-误报（R14-08）
+- 经复审 CVM API 文档，`DescribeSecurityGroupPolicies` 返回的 Ingress/Egress 数组各自同时包含 IPv4 和 IPv6 规则，`len()` 已完整统计。原始判断有误。
 
 ### [FEA-04] 项目 README 需清理旧内容并补充
 - **严重度：** 中 | **状态：** 待规划
