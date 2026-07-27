@@ -17,6 +17,7 @@ const email = ref({
 const webhook = ref({
   enabled: false,
   url: '',
+  channel: 'dingtalk',
 })
 
 const saving = ref(false)
@@ -89,6 +90,13 @@ async function save() {
       <NForm :model="webhook" label-placement="left" label-width="100">
         <NFormItem label="Webhook URL">
           <NInput v-model:value="webhook.url" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx" :disabled="!webhook.enabled" />
+        </NFormItem>
+        <NFormItem label="通知渠道">
+          <NSelect v-model:value="webhook.channel" :options="[
+            { label: '钉钉', value: 'dingtalk' },
+            { label: '飞书', value: 'feishu' },
+            { label: 'Slack', value: 'slack' },
+          ]" :disabled="!webhook.enabled" />
         </NFormItem>
       </NForm>
     </NCard>

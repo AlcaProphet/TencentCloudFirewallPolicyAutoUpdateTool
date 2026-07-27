@@ -69,6 +69,7 @@ type AlertEmailConfig struct {
 type AlertWebhookConfig struct {
 	Enabled bool   `json:"enabled"`
 	URL     string `json:"url"`
+	Channel string `json:"channel"` // dingtalk / feishu / slack，默认 dingtalk
 }
 
 // Config 全局配置
@@ -85,6 +86,6 @@ type Config struct {
 	DNSTimeout       time.Duration // 默认 10s
 	DNSFailThreshold int           // 默认 5
 	LogLevel         string        // debug / info / warn / error
-	WebUIPort        int           // 默认 9090
+	WebUIPort        int           // 默认 60200
 	Mode             string        // env / webui / 空=自动
 }

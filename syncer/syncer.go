@@ -104,6 +104,13 @@ func (s *Syncer) ReloadProviders(providers []provider.Provider) {
 	s.providers = providers
 }
 
+// ReloadResolver 热重载 DNS 解析器（DNS 地址或超时变更时调用）
+func (s *Syncer) ReloadResolver(resolver *dns.Resolver) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resolver = resolver
+}
+
 // TriggerSync 手动触发一次同步（非阻塞）
 func (s *Syncer) TriggerSync() {
 	select {
@@ -227,17 +234,16 @@ func (s *Syncer) syncAll() {
 
 // syncDomain 同步单个域名到单个 Provider
 func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
-	// 0. 熔断检查：已熔断的域名跳过（半开状态仍尝试一次探测）
-	if s.cb.IsOpen(rule.Host) {
-		slog.Debug("域名已熔断，半开探测", "domain", rule.Host)
-		return
-	}
-
-	// 1. DNS 解析（失败则保留现有规则，不删除）
+	// 0. DNS 解析（无论是否熔断都执行，熔断时作为半开探测）
 	resolved, err := s.resolver.Resolve(context.Background(), rule.Host)
 	if err != nil {
-		s.cb.RecordFailure(rule.Host)
-		slog.Warn("DNS 解析失败，保留现有规则", "domain", rule.Host, "error", err)
+		if s.cb.IsOpen(rule.Host) {
+			// 半开探测失败：维持熔断（不调用 RecordFailure，熔断中已停止计数）
+			slog.Debug("域名半开探测失败，维持熔断", "domain", rule.Host, "error", err)
+		} else {
+			s.cb.RecordFailure(rule.Host)
+			slog.Warn("DNS 解析失败，保留现有规则", "domain", rule.Host, "error", err)
+		}
 		s.bus.Publish(notifier.Event{
 			Type:      notifier.EventDNSFailed,
 			Timestamp: time.Now(),
@@ -245,14 +251,36 @@ func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
 		})
 		return
 	}
-	s.cb.RecordSuccess(rule.Host)
 
-	// 1.5 按规则配置过滤 IPv6 地址
+	// 解析成功：若之前处于熔断则解除
+	if s.cb.IsOpen(rule.Host) {
+		s.cb.RecordSuccess(rule.Host)
+		slog.Info("DNS 熔断解除", "domain", rule.Host)
+	} else {
+		s.cb.RecordSuccess(rule.Host)
+	}
+
+	// 1. 按规则配置过滤 IPv6 地址
 	if !rule.EnableIPv6 {
 		resolved = filterIPv4(resolved)
 	}
 
-	// 2. 带重试的完整同步流程（Describe → Diff → Create/Delete）
+	// 2. 委托给内部方法执行同步
+	s.syncDomainInternal(p, rule, resolved)
+}
+
+// syncDomainInternal 执行 DNS 已解析后的同步流程（Describe → Diff → Create/Delete）
+func (s *Syncer) syncDomainInternal(p provider.Provider, rule config.DomainRule, resolved []dns.ResolvedIP) {
+	// ECS ICMPv6 警告（仅当实际有 IPv6 地址时输出一次）
+	if rule.Protocol == "ICMP" && p.CloudType() == config.CloudAliECS {
+		for _, ip := range resolved {
+			if ip.IsIPv6 {
+				slog.Warn("ECS 不支持 ICMPv6 入站规则，IPv6 地址将被跳过", "domain", rule.Host)
+				break
+			}
+		}
+	}
+
 	if err := s.retrySync(p, rule, resolved); err != nil {
 		slog.Error("同步失败", "provider", p.Name(), "domain", rule.Host, "error", err)
 		s.bus.Publish(notifier.Event{
@@ -264,9 +292,8 @@ func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
 	}
 
 	slog.Info("同步完成", "provider", p.Name(), "domain", rule.Host)
-	// 发布逐域名同步成功事件（携带 provider + domain，供日志写入）
 	s.bus.Publish(notifier.Event{
-		Type:      notifier.EventSyncComplete,
+		Type:      notifier.EventDomainSyncComplete,
 		Timestamp: time.Now(),
 		Data:      map[string]any{"provider": p.Name(), "domain": rule.Host},
 	})

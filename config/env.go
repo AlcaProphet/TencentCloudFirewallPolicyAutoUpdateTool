@@ -31,7 +31,7 @@ func ParseEnv(content string) (*Config, error) {
 		LogLevel:         getOr(kv, "LOG_LEVEL", "info"),
 		DNSTimeout:       10 * time.Second,
 		DNSFailThreshold: 5,
-		WebUIPort:        9090,
+		WebUIPort:        60200,
 		TCAccessID:       kv["TC_ACCESS_ID"],
 		TCAccessKey:      kv["TC_ACCESS_KEY"],
 		AliAccessID:      kv["ALI_ACCESS_ID"],

@@ -27,7 +27,7 @@ services:
       # - DNS=223.5.5.5
 
       # WebUI 端口（可选，默认 9090）
-      - WEBUI_PORT=9090
+      - WEBUI_PORT=60200
 
       # 日志级别（可选，默认 info）
       - LOG_LEVEL=info
@@ -35,7 +35,7 @@ services:
     # ---- 端口映射 ----
     # WebUI 模式：暴露 WebUI 端口（绑定 127.0.0.1，仅本机访问）
     ports:
-      - "9090:9090"
+      - "60200:60200"
 
     # ---- 卷挂载 ----
     volumes:
@@ -50,7 +50,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget -q -O /dev/null http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1",
+          "wget -q -O /dev/null http://localhost:60200/api/health 2>/dev/null || pgrep fwalizer || exit 1",
         ]
       interval: 30s
       timeout: 3s

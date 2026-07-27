@@ -25,5 +25,5 @@ WORKDIR /app
 COPY --from=builder /fwalizer /usr/local/bin/fwalizer
 USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget -q -O /dev/null http://localhost:9090/api/health 2>/dev/null || pgrep fwalizer || exit 1
+    CMD wget -q -O /dev/null http://localhost:60200/api/health 2>/dev/null || pgrep fwalizer || exit 1
 ENTRYPOINT ["fwalizer"]

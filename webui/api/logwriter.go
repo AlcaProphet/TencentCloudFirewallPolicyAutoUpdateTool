@@ -37,11 +37,7 @@ func (w *StoreLogWriter) OnEvent(event notifier.Event) error {
 		if v, ok := event.Data["error"].(string); ok {
 			log.Error = v
 		}
-	case notifier.EventSyncComplete:
-		// 跳过全局完成事件（不携带 provider），仅记录逐域名事件
-		if log.Target == "" {
-			return nil
-		}
+	case notifier.EventDomainSyncComplete:
 		log.Result = "success"
 	default:
 		return nil

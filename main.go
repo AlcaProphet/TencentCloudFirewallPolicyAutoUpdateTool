@@ -45,6 +45,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "创建数据目录失败: %v\n", err)
 			os.Exit(1)
 		}
+
+		// pidfile 防多实例（仅 WebUI 模式）
+		pidFile := config.GetPidFilePath(dataDir)
+		cleanup, err := config.WritePidFile(pidFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		defer cleanup()
+
 		dbPath := filepath.Join(dataDir, "config.db")
 		store, err := config.OpenStore(dbPath)
 		if err != nil {
@@ -87,7 +97,7 @@ func main() {
 
 		// 同步日志写入：订阅 sync:complete 和 sync:error 事件
 		logWriter := &webapi.StoreLogWriter{Store: store}
-		s.EventBus().Subscribe(notifier.EventSyncComplete, logWriter)
+		s.EventBus().Subscribe(notifier.EventDomainSyncComplete, logWriter)
 		s.EventBus().Subscribe(notifier.EventSyncError, logWriter)
 
 		// 追踪当前活跃的告警 Notifier（用于热重载时取消旧订阅）
@@ -107,7 +117,7 @@ func main() {
 		}
 
 		if webhookCfg, err := store.GetAlertWebhook(); err == nil && webhookCfg != nil && webhookCfg.Enabled {
-			currentWebhookNotifier = notifier.NewWebhookNotifier(webhookCfg.URL)
+			currentWebhookNotifier = notifier.NewWebhookNotifier(webhookCfg.URL, webhookCfg.Channel)
 			s.EventBus().Subscribe(notifier.EventSyncError, currentWebhookNotifier)
 			s.EventBus().Subscribe(notifier.EventDNSFailed, currentWebhookNotifier)
 			slog.Info("Webhook 告警已启用", "url", webhookCfg.URL)
@@ -135,6 +145,9 @@ func main() {
 			}
 			s.ReloadProviders(newProviders)
 			s.Reload(newCfg)
+			// 若 DNS 配置变更，重建 Resolver 并热重载
+			newResolver := dns.NewResolver(newCfg.DNS, newCfg.DNSTimeout)
+			s.ReloadResolver(newResolver)
 
 			// 重建告警订阅（先取消旧订阅，再按最新配置注册）
 			if currentEmailNotifier != nil {
@@ -160,7 +173,7 @@ func main() {
 			}
 
 			if webhookCfg, err := store.GetAlertWebhook(); err == nil && webhookCfg != nil && webhookCfg.Enabled {
-				currentWebhookNotifier = notifier.NewWebhookNotifier(webhookCfg.URL)
+				currentWebhookNotifier = notifier.NewWebhookNotifier(webhookCfg.URL, webhookCfg.Channel)
 				s.EventBus().Subscribe(notifier.EventSyncError, currentWebhookNotifier)
 				s.EventBus().Subscribe(notifier.EventDNSFailed, currentWebhookNotifier)
 				slog.Info("Webhook 告警已更新", "url", webhookCfg.URL)
@@ -170,7 +183,14 @@ func main() {
 		if len(providers) == 0 {
 			slog.Info("WebUI 已启动，请通过浏览器配置云资源凭据和目标", "port", cfg.WebUIPort)
 		}
-		go srv.Start()
+		go func() {
+			actualPort, err := srv.Start()
+			if err != nil {
+				slog.Error("WebUI 服务器启动失败", "error", err)
+				return
+			}
+			cfg.WebUIPort = actualPort
+		}()
 
 		// 启动系统托盘（非桌面构建下为空操作）
 		url := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)

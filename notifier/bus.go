@@ -10,11 +10,12 @@ import (
 type EventType string
 
 const (
-	EventSyncStart    EventType = "sync:start"
-	EventSyncComplete EventType = "sync:complete"
-	EventSyncError    EventType = "sync:error"
-	EventRuleChanged  EventType = "rule:changed"
-	EventDNSFailed    EventType = "dns:failed"
+	EventSyncStart          EventType = "sync:start"
+	EventSyncComplete       EventType = "sync:complete"        // 全局：一轮同步完成
+	EventDomainSyncComplete EventType = "domain:sync_complete" // 逐域名：单个域名同步成功
+	EventSyncError          EventType = "sync:error"
+	EventRuleChanged        EventType = "rule:changed"
+	EventDNSFailed          EventType = "dns:failed"
 )
 
 // Event 事件

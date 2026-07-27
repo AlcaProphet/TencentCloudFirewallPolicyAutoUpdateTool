@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -81,46 +80,5 @@ func InitLoggerWithBroadcaster(level string, extra slog.Handler) {
 	}
 	opts := &slog.HandlerOptions{Level: lvl}
 	stdout := slog.NewTextHandler(os.Stdout, opts)
-	slog.SetDefault(slog.New(&multiHandler{handlers: []slog.Handler{stdout, extra}}))
-}
-
-// multiHandler 将日志同时写入多个 Handler
-type multiHandler struct {
-	handlers []slog.Handler
-}
-
-func (m *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	for _, h := range m.handlers {
-		if h.Enabled(ctx, level) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *multiHandler) Handle(ctx context.Context, r slog.Record) error {
-	for _, h := range m.handlers {
-		if h.Enabled(ctx, r.Level) {
-			if err := h.Handle(ctx, r); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (m *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	handlers := make([]slog.Handler, len(m.handlers))
-	for i, h := range m.handlers {
-		handlers[i] = h.WithAttrs(attrs)
-	}
-	return &multiHandler{handlers: handlers}
-}
-
-func (m *multiHandler) WithGroup(name string) slog.Handler {
-	handlers := make([]slog.Handler, len(m.handlers))
-	for i, h := range m.handlers {
-		handlers[i] = h.WithGroup(name)
-	}
-	return &multiHandler{handlers: handlers}
+	slog.SetDefault(slog.New(NewMultiHandler(stdout, extra)))
 }

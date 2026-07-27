@@ -37,10 +37,6 @@ func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved
 		// 2. 筛选本工具规则 + Diff
 		owned := provider.OwnedRules(allRules, s.cfg.Tag)
 		desc := truncateDesc(tag.Format(s.cfg.Tag, rule.Comment), p.CloudType())
-		// ECS 不支持 ICMPv6 入站规则创建，跳过 IPv6 部分
-		if rule.Protocol == "ICMP" && p.CloudType() == config.CloudAliECS {
-			slog.Warn("ECS 不支持 ICMPv6 入站规则，IPv6 地址将被跳过", "domain", rule.Host)
-		}
 		diff := provider.Diff(resolved, rule, desc, owned, p)
 
 		// 3. 执行删除

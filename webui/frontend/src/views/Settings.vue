@@ -78,6 +78,9 @@ async function importConfig(e: Event) {
       <NFormItem label="DNS 服务器">
         <NInput v-model:value="settings.dns" />
       </NFormItem>
+      <NFormItem label="DNS 超时">
+        <NInput v-model:value="settings.dns_timeout" placeholder="10s" />
+      </NFormItem>
       <NFormItem label="日志级别">
         <NSelect v-model:value="settings.log_level" :options="[
           { label: 'Debug', value: 'debug' },

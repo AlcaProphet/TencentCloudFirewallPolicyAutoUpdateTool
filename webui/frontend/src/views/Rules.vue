@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, h, watch } from 'vue'
 
 const rules = ref<any[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
-const form = ref({ host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false })
+const form = ref({ host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false, targets: [] as number[] })
 const message = useMessage()
+const targetOptions = ref<{ label: string; value: number }[]>([])
 
 const protocolOptions = [
   { label: 'TCP', value: 'TCP' },
@@ -20,22 +21,41 @@ const actionOptions = [
   { label: 'DROP', value: 'DROP' },
 ]
 
+// ICMP 协议时自动将端口设为 ALL
+watch(() => form.value.protocol, (newProto) => {
+  if (newProto === 'ICMP') {
+    form.value.ports = 'ALL'
+  }
+})
+
 async function load() {
   const res = await fetch('/api/rules')
   rules.value = await res.json() || []
 }
 
-onMounted(load)
+async function loadTargets() {
+  const res = await fetch('/api/targets')
+  const data: any[] = await res.json() || []
+  targetOptions.value = data.map((t: any) => ({
+    label: `${t.cloud_type} / ${t.resource_id}`,
+    value: t.id,
+  }))
+}
+
+onMounted(async () => {
+  await load()
+  await loadTargets()
+})
 
 function openAdd() {
   editingId.value = null
-  form.value = { host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false }
+  form.value = { host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false, targets: [] }
   showModal.value = true
 }
 
 function openEdit(row: any) {
   editingId.value = row.id
-  form.value = { host: row.host, protocol: row.protocol, ports: row.ports, action: row.action, comment: row.comment || '', enable_ipv6: !!row.enable_ipv6 }
+  form.value = { host: row.host, protocol: row.protocol, ports: row.ports, action: row.action, comment: row.comment || '', enable_ipv6: !!row.enable_ipv6, targets: Array.isArray(row.targets) ? [...row.targets] : [] }
   showModal.value = true
 }
 
@@ -72,6 +92,16 @@ const columns = [
   },
   { title: '备注', key: 'comment' },
   {
+    title: '适用目标', key: 'targets',
+    render(row: any) {
+      if (!row.targets || row.targets.length === 0) return '全部'
+      return row.targets.map((id: number) => {
+        const opt = targetOptions.value.find(o => o.value === id)
+        return opt ? opt.label : `#${id}`
+      }).join(', ')
+    }
+  },
+  {
     title: '操作', key: 'actions',
     render(row: any) {
       return h(NSpace, { size: 'small' }, {
@@ -102,10 +132,13 @@ const columns = [
           <NSelect v-model:value="form.protocol" :options="protocolOptions" />
         </NFormItem>
         <NFormItem label="端口">
-          <NInput v-model:value="form.ports" placeholder="443,80 / 8000-8010 / ALL" />
+          <NInput v-model:value="form.ports" :placeholder="form.protocol === 'ICMP' ? 'ICMP 协议固定为 ALL' : '443,80 / 8000-8010 / ALL'" :disabled="form.protocol === 'ICMP'" />
         </NFormItem>
         <NFormItem label="动作">
           <NSelect v-model:value="form.action" :options="actionOptions" />
+        </NFormItem>
+        <NFormItem label="适用目标">
+          <NSelect v-model:value="form.targets" :options="targetOptions" multiple placeholder="留空 = 全部目标" clearable />
         </NFormItem>
         <NFormItem label="备注">
           <NInput v-model:value="form.comment" placeholder="可选" />

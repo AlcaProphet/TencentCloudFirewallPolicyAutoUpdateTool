@@ -116,8 +116,8 @@ RULES=a.com|TCP|80|ACCEPT
 	if cfg.DNSFailThreshold != 5 {
 		t.Errorf("DNSFailThreshold = %d, want 5", cfg.DNSFailThreshold)
 	}
-	if cfg.WebUIPort != 9090 {
-		t.Errorf("WebUIPort = %d, want 9090", cfg.WebUIPort)
+	if cfg.WebUIPort != 60200 {
+		t.Errorf("WebUIPort = %d, want 60200", cfg.WebUIPort)
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("LogLevel = %s, want info", cfg.LogLevel)

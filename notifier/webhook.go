@@ -10,15 +10,20 @@ import (
 
 // WebhookNotifier Webhook 告警（支持钉钉/飞书/Slack 格式）
 type WebhookNotifier struct {
-	url    string
-	client *http.Client
+	url     string
+	channel string
+	client  *http.Client
 }
 
 // NewWebhookNotifier 创建 Webhook 通知器
-func NewWebhookNotifier(url string) *WebhookNotifier {
+func NewWebhookNotifier(url, channel string) *WebhookNotifier {
+	if channel == "" {
+		channel = "dingtalk"
+	}
 	return &WebhookNotifier{
-		url:    url,
-		client: &http.Client{Timeout: 10 * time.Second},
+		url:     url,
+		channel: channel,
+		client:  &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -28,11 +33,21 @@ func (n *WebhookNotifier) OnEvent(event Event) error {
 		return nil
 	}
 
-	payload := map[string]any{
-		"msgtype": "text",
-		"text": map[string]string{
-			"content": fmt.Sprintf("[FWAlizer] %s\n%s", event.Type, formatEventBody(event)),
-		},
+	content := fmt.Sprintf("[FWAlizer] %s\n%s", event.Type, formatEventBody(event))
+	var payload map[string]any
+	switch n.channel {
+	case "feishu":
+		payload = map[string]any{
+			"msg_type": "text",
+			"content":  map[string]string{"text": content},
+		}
+	case "slack":
+		payload = map[string]any{"text": content}
+	default: // dingtalk
+		payload = map[string]any{
+			"msgtype": "text",
+			"text":    map[string]string{"content": content},
+		}
 	}
 
 	body, err := json.Marshal(payload)

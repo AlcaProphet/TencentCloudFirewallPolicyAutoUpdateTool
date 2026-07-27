@@ -24,6 +24,7 @@ function formatTime(ts: string): string {
 const eventTypeLabels: Record<string, string> = {
   'sync:start': '同步开始',
   'sync:complete': '同步完成',
+  'domain:sync_complete': '域名同步完成',
   'sync:error': '同步失败',
   'dns:failed': 'DNS解析失败',
   'rule:changed': '规则变更',

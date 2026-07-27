@@ -128,15 +128,17 @@ CREATE TABLE IF NOT EXISTS alert_email (
 CREATE TABLE IF NOT EXISTS alert_webhook (
 	id INTEGER PRIMARY KEY DEFAULT 1,
 	enabled INTEGER DEFAULT 0,
-	url TEXT DEFAULT ''
+	url TEXT DEFAULT '',
+	channel TEXT DEFAULT 'dingtalk'
 );
 `
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("初始化表结构失败: %w", err)
 	}
-	// 迁移：为已有 rules 表补充 enable_ipv6 列（忽略“列已存在”错误）
+	// 迁移：为已有表补充列（忽略"列已存在"错误）
 	s.db.Exec("ALTER TABLE rules ADD COLUMN enable_ipv6 INTEGER DEFAULT 0")
+	s.db.Exec("ALTER TABLE alert_webhook ADD COLUMN channel TEXT DEFAULT 'dingtalk'")
 	return nil
 }
 
@@ -406,8 +408,8 @@ func (s *Store) SaveAlertEmail(cfg *AlertEmailConfig) error {
 func (s *Store) GetAlertWebhook() (*AlertWebhookConfig, error) {
 	var cfg AlertWebhookConfig
 	var enabled int
-	err := s.db.QueryRow("SELECT enabled, url FROM alert_webhook WHERE id = 1").
-		Scan(&enabled, &cfg.URL)
+	err := s.db.QueryRow("SELECT enabled, url, channel FROM alert_webhook WHERE id = 1").
+		Scan(&enabled, &cfg.URL, &cfg.Channel)
 	if err == sql.ErrNoRows {
 		return &AlertWebhookConfig{}, nil
 	}
@@ -425,8 +427,8 @@ func (s *Store) SaveAlertWebhook(cfg *AlertWebhookConfig) error {
 		enabled = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO alert_webhook (id, enabled, url) VALUES (1, ?, ?)`,
-		enabled, cfg.URL,
+		`INSERT OR REPLACE INTO alert_webhook (id, enabled, url, channel) VALUES (1, ?, ?, ?)`,
+		enabled, cfg.URL, cfg.Channel,
 	)
 	return err
 }
@@ -491,7 +493,7 @@ func (s *Store) LoadConfig() (*Config, error) {
 		DNSTimeout:       10 * time.Second,
 		DNSFailThreshold: 5,
 		LogLevel:         "info",
-		WebUIPort:        9090,
+		WebUIPort:        60200,
 		Mode:             "webui",
 		TCAccessID:       settings["tc_access_id"],
 		TCAccessKey:      settings["tc_access_key"],
@@ -521,6 +523,11 @@ func (s *Store) LoadConfig() (*Config, error) {
 	if v := settings["dns_fail_threshold"]; v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.DNSFailThreshold = n
+		}
+	}
+	if v := settings["dns_timeout"]; v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.DNSTimeout = d
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/alcaprophet/fwalizer/config"
@@ -46,11 +47,34 @@ func (s *Server) SetLogBroadcaster(b *api.LogBroadcaster) {
 	s.deps.LogBroadcaster = b
 }
 
-// Start 启动 HTTP 服务器（阻塞）
-func (s *Server) Start() error {
-	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
+// Start 启动 HTTP 服务器（阻塞）。若配置端口被占用，自动随机选择可用端口。
+// 返回实际监听的端口号。
+func (s *Server) Start() (int, error) {
+	actualPort := findAvailablePort(s.port)
+	if actualPort != s.port {
+		slog.Warn("端口已被占用，使用随机端口", "请求端口", s.port, "实际端口", actualPort)
+		s.port = actualPort
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", actualPort)
 	slog.Info("WebUI 启动", "访问地址", "http://"+addr)
-	return http.ListenAndServe(addr, s.mux)
+	return actualPort, http.ListenAndServe(addr, s.mux)
+}
+
+// findAvailablePort 探测端口：优先使用 preferred，被占用时由 OS 随机分配
+func findAvailablePort(preferred int) int {
+	addr := fmt.Sprintf("127.0.0.1:%d", preferred)
+	l, err := net.Listen("tcp", addr)
+	if err == nil {
+		l.Close()
+		return preferred
+	}
+	l, err = net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return preferred
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	return port
 }
 
 // registerRoutes 注册路由：health + API 委托 + 静态文件
