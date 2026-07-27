@@ -9,7 +9,7 @@
 - **多云支持**：腾讯云 Lighthouse / CVM，阿里云轻量云（SWAS）/ ECS，四款云产品统一管控
 - **双模式运行**：`.env` 文件驱动（适合服务器/容器）或 WebUI 可视化管理（适合桌面端）
 - **增量同步**：仅操作带 `[TAG]` 标记的规则，绝不覆盖手动配置的防火墙规则
-- **DNS 熔断保护**：连续解析失败达阈值后自动熔断，半开探测恢复，避免误删规则
+- **DNS 熔断保护**：连续解析失败达阈值后自动熔断，半开探测自动恢复，避免误删规则
 - **乐观锁重试**：每次写入前重新拉取最新状态，最多 3 次指数退避重试
 - **跨云并行**：不同云厂商并行同步，同厂商内串行（避免触发频率限制）
 - **单二进制分发**：前端 WebUI 编译进二进制，无运行时依赖
@@ -89,7 +89,7 @@ docker run -d --name fwalizer --restart=always \
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `DNS` | `223.5.5.5` | 上游 DNS 服务器地址（端口 :53 自动补全） |
-| `DNS_TIMEOUT` | `10s` | DNS 解析超时时间 |
+| `DNS_TIMEOUT` | `10s` | DNS 解析超时时间（WebUI 模式下在「全局设置」页面可配置） |
 | `DNS_FAIL_THRESHOLD` | `5` | 连续失败多少次后触发熔断 |
 
 ### 腾讯云凭据
@@ -110,7 +110,7 @@ docker run -d --name fwalizer --restart=always \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `WEBUI_PORT` | `9090` | WebUI 监听端口（绑定 127.0.0.1） |
+| `WEBUI_PORT` | `60200` | WebUI 监听端口（绑定 127.0.0.1，若被占用自动在 50000–65535 范围随机选择可用端口） |
 | `FWALIZER_DATA_DIR` | 各平台标准路径 | WebUI 数据存储目录（SQLite 数据库位置） |
 
 ---
@@ -133,7 +133,7 @@ docker run -d --name fwalizer --restart=always \
 
 无 `.env` 文件时自动进入 WebUI 模式，配置存储在 SQLite 数据库中。
 
-- 默认地址：`http://127.0.0.1:9090`
+- 默认地址：`http://127.0.0.1:60200`（端口被占用时自动选择可用端口）
 - 数据路径（自动选择）：
   - macOS：`~/Library/Application Support/fwalizer/config.db`
   - Linux：`~/.config/fwalizer/config.db`
@@ -186,7 +186,7 @@ RULES=api.example.com|TCP|443|ACCEPT||API, \
 
 ## CLI 数据备份与恢复
 
-WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令备份和恢复：
+WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令备份和恢复。**WebUI 模式启动时自动检测 pidfile，防止重复运行多个实例**（若已有实例运行会报错并退出）。
 
 ```bash
 # 备份（自动生成时间戳文件名，保留最新 5 个）
@@ -222,7 +222,7 @@ CGO_ENABLED=1 go build -tags desktop -o fwalizer .
 在 WebUI 的「告警配置」页面中，可配置邮件（SMTP）和 Webhook 两种通知方式。启用后在发生同步错误或 DNS 解析失败时自动推送告警：
 
 - **邮件告警**：支持标准 SMTP（如 QQ 邮箱、163 邮箱、企业邮箱）
-- **Webhook 告警**：兼容钉钉/飞书/Slack 的 Webhook 消息格式
+- **Webhook 告警**：支持钉钉、飞书、Slack 三种渠道（在告警配置页选择「通知渠道」），自动适配各平台消息格式
 - 告警配置修改后即时生效（热重载），无需重启
 
 ---
@@ -267,7 +267,7 @@ docker run -d --name fwalizer --restart=always \
 
 ```bash
 docker run -d --name fwalizer --restart=always \
-  -p 9090:9090 \
+  -p 60200:60200 \
   -v fwalizer-data:/home/appuser/.config/fwalizer \
   ghcr.io/alcaprophet/fwalizer:latest
 ```
@@ -285,7 +285,7 @@ services:
       - ./.env:/app/.env:ro   # .env 模式
     # 或 WebUI 模式：
     # ports:
-    #   - "9090:9090"
+    #   - "60200:60200"
     # volumes:
     #   - fwalizer-data:/home/appuser/.config/fwalizer
 
@@ -347,7 +347,7 @@ cd webui/frontend
 # 安装依赖
 npm install
 
-# 启动开发服务器（热重载，代理 API 到 127.0.0.1:9090）
+# 启动开发服务器（热重载，代理 API 到 127.0.0.1:60200）
 npm run dev
 
 # 构建生产版本（输出到 dist/，go:embed 会自动包含）
@@ -359,7 +359,7 @@ npm run build
 ```bash
 cd webui/frontend && npm run build && cd ../..
 make build
-./fwalizer    # 访问 http://127.0.0.1:9090
+./fwalizer    # 访问 http://127.0.0.1:60200
 ```
 
 ---
@@ -380,7 +380,7 @@ make build
 
 ### 4. DNS 解析失败时会删除已有规则吗？
 
-**不会。** DNS 解析失败时保留现有规则不变（仅记录 WARN 日志）。连续失败达到阈值（默认 5 次）后触发熔断，暂停该域名同步，不影响其他域名。
+**不会。** DNS 解析失败时保留现有规则不变（仅记录 WARN 日志）。连续失败达到阈值（默认 5 次）后触发熔断，暂停该域名同步。**熔断后每轮同步仍会尝试一次半开探测**，解析成功后自动解除熔断并恢复正常同步，无需重启。
 
 ### 5. 支持 IPv6 吗？
 
@@ -404,7 +404,15 @@ make build
 
 ### 10. 如何配置告警通知？
 
-启动 WebUI 模式后，在左侧菜单进入「告警配置」页面，填写 SMTP 或 Webhook 信息并启用即可。配置保存后即时生效。
+启动 WebUI 模式后，在左侧菜单进入「告警配置」页面，填写 SMTP 或 Webhook 信息并启用即可。Webhook 支持在配置页选择「通知渠道」（钉钉/飞书/Slack），程序会自动适配各平台的消息格式。配置保存后即时生效。
+
+### 11. 后端服务端口被占用怎么办？
+
+默认端口 `60200` 被占用时，程序会自动在 `50000–65535` 范围内随机选择一个可用端口，并在日志中输出 WARN 提示和实际端口号。您也可以显式设置 `WEBUI_PORT` 环境变量指定其他端口。
+
+### 12. WebUI 模式能否同时启动多个实例？
+
+**不能。** 程序通过 pidfile（`<数据目录>/fwalizer.pid`）检测已有实例，若检测到另一个 FWAlizer 进程正在运行，会拒绝启动并提示 PID。这避免了多实例操作同一 SQLite 数据库可能引起的问题。
 
 ---
 

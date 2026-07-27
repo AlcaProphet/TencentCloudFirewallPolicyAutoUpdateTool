@@ -31,7 +31,7 @@
 
 - 项目以**内部使用**为设计前提，WebUI 不针对公开访问设计
 - 网络安全边界由用户自己控制（防火墙、VPN、反向代理等）
-- WebUI 默认绑定 `127.0.0.1`，端口通过 `WEBUI_PORT` 配置（默认 `9090`）
+- WebUI 默认绑定 `127.0.0.1`，端口通过 `WEBUI_PORT` 配置（默认 `60200`，若被占用自动在 50000–65535 范围随机选择可用端口；参见 `webui/server.go` 的 `findAvailablePort`）
 - Docker 用户通过 `-p` 自行决定暴露范围
 - 凭据通过独立环境变量传入，不与资源声明混合
 
@@ -146,6 +146,9 @@
 - 遵守 `Documents/` 中的 API 文档要求（参数格式、字段长度限制、频率限制）
 - 多云抽象基于 Provider 接口 + 工厂注册模式（详见 Build1.md）
 - 桌面端系统托盘代码通过 `//go:build desktop` 标签隔离
+- 日志多路复用器 `MultiHandler` 统一定义在 `app/logutil.go`（消除与 `webui/api/logstream.go` 的重复）
+- WebUI 模式通过 pidfile（`config/pidfile.go` + 平台文件）防止多实例运行
+- 事件类型：全局同步完成用 `EventSyncComplete`，逐域名同步完成用 `EventDomainSyncComplete`（定义于 `notifier/bus.go`）
 
 ---
 
