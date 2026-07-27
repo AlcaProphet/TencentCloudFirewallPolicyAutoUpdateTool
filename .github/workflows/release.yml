@@ -8,12 +8,15 @@ on:
 permissions:
   contents: write
 
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    env:
-      BUILD_VERSION: ${{ github.ref_name }}
+env:
+  BUILD_VERSION: ${{ github.ref_name }}
 
+jobs:
+  # ═══════════════════════════════════════════════════════════
+  # Job 1: Headless 静态二进制（全平台交叉编译）
+  # ═══════════════════════════════════════════════════════════
+  headless:
+    runs-on: ubuntu-24.04
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -48,7 +51,7 @@ jobs:
           go test -v ./...
           go vet ./...
 
-      - name: 构建多平台二进制
+      - name: 构建全平台 headless 二进制
         run: |
           LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
           mkdir -p dist
@@ -64,15 +67,100 @@ jobs:
           # Windows
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/fwalizer-windows-amd64.exe .
 
+      - name: 上传 headless 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-binaries
+          path: dist/
+
+  # ═══════════════════════════════════════════════════════════
+  # Job 2: 桌面二进制（原生 CGO，含系统托盘）
+  # ═══════════════════════════════════════════════════════════
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            goarch: amd64
+            asset-name: fwalizer macOS Intel
+          - os: macos-15
+            goarch: arm64
+            asset-name: fwalizer macOS Apple Silicon
+          - os: windows-2025
+            goarch: amd64
+            asset-name: fwalizer Windows Desktop
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 构建前端
+        run: cd webui/frontend && npm ci && npm run build
+
+      # ── Windows: 安装 mingw-w64 工具链 ──
+      - name: 安装 Windows C 工具链
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-toolchain
+
+      # ── macOS: 原生 CGO 编译 ──
+      - name: 构建 macOS 桌面二进制
+        if: runner.os == 'macOS'
+        run: |
+          LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
+          CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} \
+            go build -tags desktop -ldflags="${LDFLAGS}" \
+            -o "${{ matrix.asset-name }}" .
+
+      # ── Windows: CGO 编译（需要 msys2 shell） ──
+      - name: 构建 Windows 桌面二进制
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
+          CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} \
+            go build -tags desktop -ldflags="${LDFLAGS}" \
+            -o "${{ matrix.asset-name }}" .
+
+      - name: 上传桌面产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset-name }}
+          path: ${{ matrix.asset-name }}
+
+  # ═══════════════════════════════════════════════════════════
+  # Job 3: 创建 GitHub Release（汇总所有产物）
+  # ═══════════════════════════════════════════════════════════
+  release:
+    needs: [headless, desktop]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 下载全部产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 列出产物
+        run: ls -la dist/
+
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/fwalizer-linux-amd64
-            dist/fwalizer-linux-arm64
-            dist/fwalizer-darwin-amd64
-            dist/fwalizer-darwin-arm64
-            dist/fwalizer-windows-amd64.exe
+          files: dist/*
           generate_release_notes: true
           draft: false
           prerelease: false

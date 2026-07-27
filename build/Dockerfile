@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 COPY --from=frontend-builder /src/webui/frontend/dist ./webui/frontend/dist
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -tags docker \
+RUN CGO_ENABLED=0 go build \
     -ldflags="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${VERSION}" \
     -o /fwalizer .
 
