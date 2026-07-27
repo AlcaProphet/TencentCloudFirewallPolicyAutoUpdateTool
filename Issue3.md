@@ -1535,3 +1535,114 @@ func findAvailablePort(preferred int) int {
 6. 修改 `README.md`、`Design1.md`、`AGENTS.md`（文档同步）
 7. 编译验证：`go build ./... && go test ./... && go vet ./...`
 8. 前端构建验证：`cd webui/frontend && npm run build`
+
+---
+
+## 五、第15轮审查（2026-07-27）
+
+> 审查范围：全量代码逐文件审查 + 官方 API 文档对照 + 设计一致性校验。
+> 审查方式：逐文件阅读 + API 文档对照 + 编译验证 + 测试验证。
+
+### 5.1 发现的问题
+
+| 编号 | 问题 | 严重度 | 状态 |
+|------|------|--------|------|
+| [R15-01](#r15-01) | Design1.md WebUI 默认端口未同步更新为 60200 | ⚪ 低 | ✅ 已修复 |
+| [R15-02](#r15-02) | docker-compose.yml.example 注释中默认端口未同步更新 | ⚪ 低 | ✅ 已修复 |
+
+---
+
+### 5.2 问题详情与修复结论
+
+#### [R15-01] Design1.md WebUI 默认端口未同步更新为 60200
+
+- **严重度：** ⚪ 低 | **模块：** 文档
+- **文件：** `Design1.md` L63、L257
+- **现象：** Issue3.md R14-12 已将 WebUI 默认端口从 `9090` 变更为 `60200`，代码、测试、Dockerfile、README、AGENTS.md 均已同步更新，但 Design1.md 的两处描述仍为 `9090`：
+  - L63："端口通过 `WEBUI_PORT` 配置，默认 `9090`"
+  - L257："WebUI 端口 | 可配置，默认 `9090`"
+- **是否与已有 Issue 重复：** R14-12 记录了变更计划，但 Design1.md 未实际更新
+
+##### 修复方法
+
+修改 `Design1.md` 两处：
+
+**改动 1：L63**
+```markdown
+- 端口通过 `WEBUI_PORT` 配置，默认 `60200`
+```
+
+**改动 2：L257**
+```markdown
+| WebUI 端口 | 可配置，默认 `60200` |
+```
+
+---
+
+#### [R15-02] docker-compose.yml.example 注释中默认端口未同步更新
+
+- **严重度：** ⚪ 低 | **模块：** 文档
+- **文件：** `docker-compose.yml.example` L29
+- **现象：** 注释写"WebUI 端口（可选，默认 9090）"，但实际默认值已改为 `60200`
+- **是否与已有 Issue 重复：** R14-12 的变更清单中包含此文件，但仅修改了端口映射值，注释未同步更新
+
+##### 修复方法
+
+修改 `docker-compose.yml.example` L29：
+
+**改动：**
+```yaml
+      # WebUI 端口（可选，默认 60200）
+      - WEBUI_PORT=60200
+```
+
+---
+
+### 5.3 编译与测试
+
+| 验证命令 | 结果 |
+|---------|------|
+| `go build ./...` | ✅ 零错误 |
+| `go vet ./...` | ✅ 零警告 |
+| `go test ./...` | ✅ 6 个测试包全部 `ok` |
+
+### 5.4 API 文档合规性验证
+
+| 云厂商 | Provider 文件 | 查询 API | 创建 API | 删除 API | 合规结论 |
+|--------|-------------|---------|---------|---------|----------|
+| 腾讯云 Lighthouse | `tc_lighthouse.go` | DescribeFirewallRules（Offset+Limit 分页） | CreateFirewallRules（不传 FirewallVersion，Protocol 支持 TCP/UDP/ICMP/ICMPv6/ALL） | DeleteFirewallRules | ✅ 符合官方文档 |
+| 腾讯云 CVM | `tc_cvm.go` | DescribeSecurityGroupPolicies（仅 Ingress） | CreateSecurityGroupPolicies（Action 小写，ICMP/ICMPV6 省略 Port） | DeleteSecurityGroupPolicies（PolicyIndex 降序逐条） | ✅ 符合官方文档 |
+| 阿里云 SWAS | `ali_swas.go` | ListFirewallRules（PageNumber+PageSize 分页） | CreateFirewallRules（DROP 过滤正确） | DeleteFirewallRules（RuleIds 数组） | ✅ 符合官方文档 |
+| 阿里云 ECS | `ali_ecs.go` | DescribeSecurityGroupAttribute（NextToken 分页） | AuthorizeSecurityGroup（Permissions 数组，100条/批） | RevokeSecurityGroup（SecurityGroupRuleId 数组） | ✅ 符合官方文档 |
+
+### 5.5 设计一致性校验
+
+| 检查项 | 预期 | 实际 | 结论 |
+|--------|------|------|------|
+| WebUI 绑定 `127.0.0.1` | Design1.md §七 | `server.go` L58 `127.0.0.1:{port}` | ✅ |
+| .env 模式与 WebUI 互斥 | Design1.md §四 | .env 模式不写 SQLite，WebUI 不读 .env | ✅ |
+| TCP+UDP 协议拆分 | AGENTS.md §三 | `buildDesired` 中仅 SWAS 不拆分 | ✅ |
+| IPv6+ICMP 处理 | AGENTS.md §三 | Lighthouse→ICMPv6, CVM→ICMPV6, ECS→跳过 | ✅ |
+| 规则 TAG 标识格式 | AGENTS.md §三 | `[TAG] comment`，`HasPrefix` 检测 | ✅ |
+| 删除幂等 | AGENTS.md §三 | `isIdempotentDelete` 覆盖四种错误码 | ✅ |
+| 添加幂等 | AGENTS.md §三 | `isIdempotentCreate` 覆盖四种错误码 | ✅ |
+| DNS 解析失败不删规则 | AGENTS.md §四 | `syncDomain` WARN 后 return | ✅ |
+| 渐进式熔断（半开探测） | AGENTS.md §四 | `syncDomain` 中半开探测逻辑正确实现 | ✅ |
+| 乐观锁重试（3次+退避） | AGENTS.md §六 | `retrySync` 每次重新 Describe | ✅ |
+| 不同云厂商并行 | AGENTS.md §七 | `groupByCloud` + goroutine | ✅ |
+| 同厂商串行+间隔 | AGENTS.md §七 | `rateLimitInterval` | ✅ |
+| 配置导出不含凭据 | Design1.md §七 | `handleConfigExport` 删除凭据 key | ✅ |
+| Docker HEALTHCHECK | AGENTS.md §八 | Dockerfile L27-28 | ✅ |
+| CGO 分离 | Build1.md §八 | `//go:build desktop` 标签 | ✅ |
+| 中文注释 | AGENTS.md §十一 | 所有 Go 文件注释均为中文 | ✅ |
+| 所有 error 必须处理 | AGENTS.md §十一 | 已逐文件验证 | ✅ |
+| 配置热重载 | AGENTS.md §五 | ReloadFunc 支持 Provider/Resolver/告警重建 | ✅ |
+| pidfile 防多实例 | AGENTS.md §十一 | `config/pidfile.go` + 平台文件 | ✅ |
+| EventBus Unsubscribe | Issue3 R13-04 | `bus.go` L58-70 | ✅ |
+
+### 5.6 第15轮总结
+
+- **新发现问题：** 2 项（均为文档同步遗漏，严重度低）
+- **编译/测试：** 全部通过 ✅
+- **API 合规性：** 四个 Provider 均符合官方文档 ✅
+- **设计一致性：** 全部检查项通过 ✅
