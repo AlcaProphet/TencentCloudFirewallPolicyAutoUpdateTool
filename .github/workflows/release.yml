@@ -125,15 +125,14 @@ jobs:
             go build -tags desktop -ldflags="${LDFLAGS}" \
             -o "${{ matrix.asset-name }}" .
 
-      # ── Windows: CGO 编译（需要 msys2 shell） ──
+      # ── Windows: CGO 编译（使用 PowerShell，Go 来自 setup-go，GCC 来自 setup-msys2）──
       - name: 构建 Windows 桌面二进制
         if: runner.os == 'Windows'
-        shell: msys2 {0}
         run: |
-          LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
-          CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} \
-            go build -tags desktop -ldflags="${LDFLAGS}" \
-            -o "${{ matrix.asset-name }}" .
+          $env:LDFLAGS = "-s -w -X github.com/alcaprophet/fwalizer/version.Version=$env:BUILD_VERSION"
+          $env:CGO_ENABLED = "1"
+          $env:GOARCH = "${{ matrix.goarch }}"
+          go build -tags desktop -ldflags="$env:LDFLAGS" -o "${{ matrix.asset-name }}" .
 
       - name: 上传桌面产物
         uses: actions/upload-artifact@v4
