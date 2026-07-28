@@ -75,8 +75,8 @@ jobs:
           sed "s/1.0/${BUILD_VERSION#v}/g" build/Info.plist > "${APP}/Contents/Info.plist"
           chmod +x "${APP}/Contents/MacOS/fwalizer"
 
-          # 打包为 zip（GitHub Release 友好分发）
-          zip -r "${{ matrix.asset-name }}.zip" "${APP}"
+          # 打包为 zip（ditto 保留可执行权限和扩展属性，避免 .app 损坏）
+          ditto -c -k --keepParent "${APP}" "${{ matrix.asset-name }}.zip"
 
       # ── Windows: CGO 编译（使用 PowerShell，Go 来自 setup-go，GCC 来自 setup-msys2）──
       - name: 构建 Windows 桌面二进制
