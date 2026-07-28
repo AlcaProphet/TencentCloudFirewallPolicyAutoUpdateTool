@@ -13,68 +13,7 @@ env:
 
 jobs:
   # ═══════════════════════════════════════════════════════════
-  # Job 1: Headless 静态二进制（全平台交叉编译）
-  # ═══════════════════════════════════════════════════════════
-  headless:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置 Go 环境
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - name: 更新所有 SDK 到最新版
-        run: |
-          go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common
-          go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse
-          go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc
-          go get -u github.com/alibabacloud-go/swas-open-20200601/v3
-          go get -u github.com/alibabacloud-go/ecs-20140526/v7
-          go get -u github.com/alibabacloud-go/darabonba-openapi/v2
-          go get -u github.com/aliyun/credentials-go
-          go mod tidy
-
-      - name: 设置 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: 构建前端
-        run: cd webui/frontend && npm ci && npm run build
-
-      - name: 编译检查 + 测试
-        run: |
-          go build -v ./...
-          go test -v ./...
-          go vet ./...
-
-      - name: 构建全平台 headless 二进制
-        run: |
-          LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
-          mkdir -p dist
-
-          # Linux
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/fwalizer-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/fwalizer-linux-arm64 .
-
-          # macOS (Intel + Apple Silicon)
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/fwalizer-darwin-amd64 .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/fwalizer-darwin-arm64 .
-
-          # Windows
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/fwalizer-windows-amd64.exe .
-
-      - name: 上传 headless 产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: headless-binaries
-          path: dist/
-
-  # ═══════════════════════════════════════════════════════════
-  # Job 2: 桌面二进制（原生 CGO，含系统托盘）
+  # 桌面二进制（原生 CGO，含系统托盘）
   # ═══════════════════════════════════════════════════════════
   desktop:
     strategy:
@@ -141,10 +80,10 @@ jobs:
           path: ${{ matrix.asset-name }}
 
   # ═══════════════════════════════════════════════════════════
-  # Job 3: 创建 GitHub Release（汇总所有产物）
+  # 创建 GitHub Release（汇总所有产物）
   # ═══════════════════════════════════════════════════════════
   release:
-    needs: [headless, desktop]
+    needs: [desktop]
     runs-on: ubuntu-24.04
     steps:
       - name: 下载全部产物
