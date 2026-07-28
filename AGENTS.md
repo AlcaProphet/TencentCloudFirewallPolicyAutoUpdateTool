@@ -145,7 +145,7 @@
 - 注释使用**中文**（面向国内开发者）
 - 遵守 `Documents/` 中的 API 文档要求（参数格式、字段长度限制、频率限制）
 - 多云抽象基于 Provider 接口 + 工厂注册模式（详见 Build1.md）
-- 桌面端系统托盘代码通过 `//go:build desktop` 标签隔离
+- 桌面端系统托盘功能**已搁置**（代码归档至 `desktop/`，详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)）
 - 日志多路复用器 `MultiHandler` 统一定义在 `app/logutil.go`（消除与 `webui/api/logstream.go` 的重复）
 - WebUI 模式通过 pidfile（`config/pidfile.go` + 平台文件）防止多实例运行
 - 事件类型：全局同步完成用 `EventSyncComplete`，逐域名同步完成用 `EventDomainSyncComplete`（定义于 `notifier/bus.go`）
@@ -162,4 +162,5 @@
 | [Issue3.md](./Issue3.md) | 开发者 | 第13轮审查 + 全量复核记录（当前权威状态） |
 | [Issue2.md](./Issue2.md) | 开发者（历史归档） | 第11-12轮审查问题与合规验证（已全部修复） |
 | [Issue1.md](./Issue1.md) | 开发者（历史归档） | 第1-10轮审查历史问题精简归档 |
+| [FutureDesktopDevelop.md](./FutureDesktopDevelop.md) | 开发者 | 桌面端功能搁置记录与后续重启思路 |
 | AGENTS.md（本文件） | AI 编码助手 | 编码指令与约束 |

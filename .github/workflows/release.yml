@@ -1,126 +1,22 @@
-name: Release Binaries
+name: Release Binaries (已搁置)
+
+# 桌面端功能已暂时搁置开发，此 workflow 仅输出说明信息。
+# 详见 FutureDesktopDevelop.md
 
 on:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-
-env:
-  BUILD_VERSION: ${{ github.ref_name }}
-
 jobs:
-  # ═══════════════════════════════════════════════════════════
-  # 桌面二进制（原生 CGO，含系统托盘）
-  # ═══════════════════════════════════════════════════════════
-  desktop:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            goarch: amd64
-            asset-name: fwalizer-macOS-Intel
-            app-name: FWAlizer.app
-          - os: macos-15
-            goarch: arm64
-            asset-name: fwalizer-macOS-AppleSilicon
-            app-name: FWAlizer.app
-          - os: windows-2025
-            goarch: amd64
-            asset-name: fwalizer-Windows.exe
-    runs-on: ${{ matrix.os }}
+  notice:
+    runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置 Go 环境
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - name: 设置 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: 构建前端
-        run: cd webui/frontend && npm ci && npm run build
-
-      # ── Windows: 安装 mingw-w64 工具链 ──
-      - name: 安装 Windows C 工具链
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          install: mingw-w64-x86_64-toolchain
-
-      # ── macOS: 原生 CGO 编译 + .app 打包 ──
-      - name: 构建 macOS 桌面二进制
-        if: runner.os == 'macOS'
+      - name: 桌面端构建已搁置
         run: |
-          LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
-          CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} \
-            go build -tags desktop -ldflags="${LDFLAGS}" \
-            -o fwalizer .
-
-          # 创建 .app 包结构（macOS 托盘功能必须用 .app）
-          APP="${{ matrix.app-name }}"
-          mkdir -p "${APP}/Contents/MacOS"
-          mkdir -p "${APP}/Contents/Resources"
-          cp fwalizer "${APP}/Contents/MacOS/"
-          # 注入版本号到 Info.plist
-          sed "s/1.0/${BUILD_VERSION#v}/g" build/Info.plist > "${APP}/Contents/Info.plist"
-          chmod +x "${APP}/Contents/MacOS/fwalizer"
-
-          # 打包为 zip（ditto 保留可执行权限和扩展属性，避免 .app 损坏）
-          ditto -c -k --keepParent "${APP}" "${{ matrix.asset-name }}.zip"
-
-      # ── Windows: CGO 编译（使用 PowerShell，Go 来自 setup-go，GCC 来自 setup-msys2）──
-      - name: 构建 Windows 桌面二进制
-        if: runner.os == 'Windows'
-        run: |
-          $env:LDFLAGS = "-s -w -X github.com/alcaprophet/fwalizer/version.Version=$env:BUILD_VERSION"
-          $env:CGO_ENABLED = "1"
-          $env:GOARCH = "${{ matrix.goarch }}"
-          go build -tags desktop -ldflags="$env:LDFLAGS" -o "${{ matrix.asset-name }}" .
-
-      - name: 上传 macOS 产物
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset-name }}
-          path: ${{ matrix.asset-name }}.zip
-
-      - name: 上传 Windows 产物
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset-name }}
-          path: ${{ matrix.asset-name }}
-
-  # ═══════════════════════════════════════════════════════════
-  # 创建 GitHub Release（汇总所有产物）
-  # ═══════════════════════════════════════════════════════════
-  release:
-    needs: [desktop]
-    runs-on: ubuntu-24.04
-    steps:
-      - name: 下载全部产物
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: 列出产物
-        run: ls -la dist/
-
-      - name: 创建 GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          echo "============================================"
+          echo " 桌面端（macOS/Windows 托盘）功能已暂时搁置"
+          echo " 当前版本不提供桌面二进制 Release"
+          echo " 请使用 Docker 镜像或从源码编译（无 desktop tag）"
+          echo " 详见 FutureDesktopDevelop.md"
+          echo "============================================"

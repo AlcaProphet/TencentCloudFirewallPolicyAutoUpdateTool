@@ -8,7 +8,9 @@
 
 **FWAlizer**（Firewall DNS Synchronizer）是一个轻量级自动化工具：通过 DNS 解析指定域名的 IP 地址，自动同步到云防火墙/安全组白名单中。
 
-核心特性：**跨平台单二进制**、**多云支持**、**WebUI 配置面板**、**Docker 与桌面端双部署**。
+核心特性：**跨平台单二进制**、**多云支持**、**WebUI 配置面板**、**Docker 部署**。
+
+> ⚠️ 桌面端（macOS/Windows 系统托盘）功能已暂时搁置，详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)。
 
 ---
 
@@ -19,7 +21,7 @@
 | 1 | 多实例多地域 | 同时管理多台云资源，跨地域 |
 | 2 | **多云支持** | 腾讯云 Lighthouse / CVM，阿里云 ECS / 轻量云 |
 | 3 | WebUI 管理面板 | 内部使用，简化配置，不对外开放 |
-| 4 | 跨平台桌面端 | Linux / Windows / macOS |
+| 4 | ~~跨平台桌面端~~ | **已搁置**，见 FutureDesktopDevelop.md |
 | 5 | 轻量化 | 低资源占用，单二进制分发 |
 | 6 | 可扩展 | 邮件告警、Webhook 等未来功能 |
 
@@ -34,7 +36,7 @@
 2. 原生交叉编译，单二进制跨平台
 3. `embed` 包将前端静态资源编译进二进制
 4. 不引入 Node.js/Python 运行时，保持轻量
-5. 桌面端方案成熟（系统托盘 + 浏览器 WebUI）
+5. ~~桌面端方案成熟（系统托盘 + 浏览器 WebUI）~~ 桌面端功能已搁置
 6. 腾讯云和阿里云均提供官方 Go SDK
 
 ---
@@ -47,7 +49,7 @@
 |---------|---------|-------|------|
 | Docker + 传入 .env | .env 解析 | 不启动 | 纯 headless |
 | Docker + 未传 .env | SQLite | 启动 | 通过 WebUI 配置 |
-| 桌面端直接运行 | SQLite | 启动 | 系统托盘 + WebUI |
+| ~~桌面端直接运行~~ | SQLite | 启动 | **已搁置**（见 FutureDesktopDevelop.md） |
 
 ### 模式判定逻辑
 
@@ -79,7 +81,12 @@ StoreLoader (SQLite)  ──→ Config ──→ Syncer（支持热重载）
 - WebUI 模式：暴露端口，SQLite 挂载 `/data`
 - HEALTHCHECK：WebUI 模式用 HTTP 端点检测
 
-### 5.2 桌面端
+### 5.2 桌面端（已搁置）
+
+> ⚠️ **该功能已暂时搁置。** 桌面端（macOS 系统托盘 / Windows 托盘）因 `fyne.io/systray` 与 macOS Launch Services 兼容性问题无法正常启动。代码归档至 `desktop/` 目录。详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)。
+
+<details>
+<summary>历史设计（点击展开）</summary>
 
 **方案：系统托盘 + 浏览器 WebUI（推荐）**
 
@@ -105,6 +112,8 @@ StoreLoader (SQLite)  ──→ Config ──→ Syncer（支持热重载）
 - Linux：不提供内置支持（用户自行配置 systemd user unit）
 
 **CGO 说明：** 托盘库 `fyne.io/systray` 在 macOS 需要 CGO，桌面端构建 `CGO_ENABLED=1`，与 Docker 的纯静态编译（`CGO_ENABLED=0`）通过 Go build tags 分离。
+
+</details>
 
 ---
 
@@ -229,7 +238,7 @@ notifier/
 | **Phase 1** | Provider 抽象 + 多云基础 + 配置 + CLI + DNS 熔断 + EventBus + Docker | Step 1–12 |
 | **Phase 2** | WebUI + 配置持久化 + 热重载 + Dry Run + 导入导出 | Step 13–14 |
 | **Phase 3** | 告警（邮件、Webhook）+ 高级功能 | Step 15 |
-| **Phase 4** | 桌面端（系统托盘、开机自启） | Step 16 |
+| **Phase 4** | ~~桌面端（系统托盘、开机自启）~~ | Step 16（**已搁置**） |
 
 ---
 
@@ -246,10 +255,10 @@ notifier/
 | Web 前端 | Vue 3 + Vite + Naive UI（本地构建） |
 | 前端包管理 | npm |
 | 配置存储 | SQLite（`modernc.org/sqlite`） |
-| 桌面方案 | 系统托盘 + 浏览器 WebUI |
-| 系统托盘库 | `fyne.io/systray` |
+| 桌面方案 | ~~系统托盘 + 浏览器 WebUI~~ 已搁置（见 FutureDesktopDevelop.md） |
+| 系统托盘库 | `fyne.io/systray`（**已搁置**） |
 | 构建分离 | Go build tags + CGO 差异 |
-| 开机自启 | Windows + macOS，用户设置项，默认关闭 |
+| 开机自启 | ~~Windows + macOS~~ **已搁置** |
 | 配置热重载 | channel 通知 Syncer |
 | 健康检查 | `/api/health` HTTP 端点 |
 | 扩展架构 | Event Bus + Subscriber |

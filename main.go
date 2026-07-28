@@ -192,19 +192,21 @@ func main() {
 			cfg.WebUIPort = actualPort
 		}()
 
-		// 启动系统托盘（非桌面构建下为空操作）
-		url := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
-		go app.RunSystray(url, func() { s.TriggerSync() })
+		// 启动系统托盘（桌面端功能已搁置，见 FutureDesktopDevelop.md）
+		// url := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+		// go app.RunSystray(url, func() { s.TriggerSync() })
 
 		go s.Run()
 
-		// 等待停止信号（Ctrl+C 或托盘退出）
+		// 等待停止信号（Ctrl+C）
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-		select {
-		case <-sigCh:
-		case <-app.QuitCh():
-		}
+		<-sigCh
+		// 桌面端功能已搁置，不再监听托盘退出 channel；见 FutureDesktopDevelop.md
+		// select {
+		// case <-sigCh:
+		// case <-app.QuitCh():
+		// }
 		slog.Info("收到停止信号，等待当前轮次完成...")
 		s.Stop()
 		s.Wait()

@@ -53,7 +53,7 @@ Issue2.md Section 14 逐文件核查确认：
 | [WEB-06] | 前端缺少 /advanced、/alerts 页面 | 中 |
 | [FEA-02] | 告警通知器未接入 EventBus | 中 |
 | [FEA-03] | CLI 缺少 backup/restore | 中 |
-| [FEA-06] | systray 缺少同步触发和开机自启 | 低 |
+| [FEA-06] | systray 缺少同步触发和开机自启（**已搁置**，见 FutureDesktopDevelop.md） | 低 |
 
 ### Issue1 独有待规划/已裁定项（Issue2 未覆盖）
 

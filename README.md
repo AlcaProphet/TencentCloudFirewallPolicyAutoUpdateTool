@@ -202,6 +202,11 @@ WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令�
 
 ## 桌面端系统托盘
 
+> ⚠️ **该功能已暂时搁置开发。** 桌面端（macOS 系统托盘 / Windows 托盘）因 Launch Services 兼容性问题无法正常启动，当前不提供桌面二进制 Release。请使用 WebUI 模式或 Docker 模式。详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)。
+
+<details>
+<summary>历史设计（点击展开）</summary>
+
 从 [GitHub Releases](https://github.com/alcaprophet/fwalizer/releases) 下载对应平台的桌面版：
 
 | 文件 | 平台 |
@@ -239,6 +244,8 @@ CGO_ENABLED=1 go build -tags desktop -o fwalizer .
 # cp fwalizer FWAlizer.app/Contents/MacOS/
 # cp build/Info.plist FWAlizer.app/Contents/
 ```
+
+</details>
 
 ---
 

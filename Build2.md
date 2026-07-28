@@ -21,7 +21,7 @@
 | 8 | WEB-06 | `/advanced` + `/alerts` 页面 + 告警 API | 🟡 中 | ✅ 验收通过 |
 | 9 | FEA-02 | 告警通知器接入 EventBus | 🟡 中 | ✅ 验收通过 |
 | 10 | FEA-03 | CLI `backup` / `restore` | 🟡 中 | ✅ 验收通过 |
-| 11 | FEA-06 | systray 同步触发 + 开机自启 | ⚪ 低 | ✅ 验收通过 |
+| 11 | FEA-06 | systray 同步触发 + 开机自启 | ⚪ 低 | ✅ 验收通过（**已搁置**，见 FutureDesktopDevelop.md） |
 
 > 状态标记：☐ 未开始 / ◧ 进行中 / ✅ 验收通过
 > 复核日期：2026-07-27，详见 [Issue3.md 全量复核记录](./Issue3.md#全量复核记录)
@@ -44,7 +44,7 @@
 | 8 | `config/config.go`、`store.go`、`alerts.go`、`Advanced.vue`、`Alerts.vue`、`main.ts`、`App.vue`、`deps.go` | 新增 alert 表+CRUD+API+前端页面+路由+菜单 |
 | 9 | `main.go` | 启动时从 alert 表注册 Notifier；ReloadFunc 含热重载 Unsubscribe+重建 |
 | 10 | `config/store.go`、`app/cli.go`、`main.go` | 提取 `GetDataDir()`；新增 `backup`/`restore` CLI 命令（含 `copyFile`/`cleanOldBackups`/`verifyBackup`） |
-| 11 | `app/systray.go`、`systray_stub.go`、`autostart.go`、`autostart_darwin.go`、`autostart_windows.go`、`syncer/syncer.go`、`main.go` | 回调触发同步；macOS plist + Windows registry 开机自启；优雅退出 channel |
+| 11 | `app/systray.go`、`systray_stub.go`、`autostart.go`、`autostart_darwin.go`、`autostart_windows.go`、`syncer/syncer.go`、`main.go` | 回调触发同步；macOS plist + Windows registry 开机自启；优雅退出 channel（**已搁置**，见 FutureDesktopDevelop.md） |
 
 ---
 

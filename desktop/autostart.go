@@ -1,4 +1,5 @@
-//go:build desktop
+//go:build ignore
+// 桌面端功能已搁置，此文件归档于 desktop/ 目录。原构建标签: //go:build desktop
 
 package app
 

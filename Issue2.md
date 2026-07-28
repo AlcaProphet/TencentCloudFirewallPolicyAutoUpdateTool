@@ -22,7 +22,7 @@
 | [WEB-06] | 前端缺少 `/advanced`、`/alerts` 页面 | 🟡 中 | 新增 `Advanced.vue`/`Alerts.vue` + `alerts.go` API + 路由/菜单 |
 | [FEA-02] | 告警通知器未接入 EventBus | 🟡 中 | `main.go` 启动时读取 alert 表注册 Notifier；ReloadFunc 含热重载 |
 | [FEA-03] | CLI 缺少 `backup` / `restore` | 🟡 中 | `store.go` 提取 `GetDataDir()`；`cli.go` 新增两个 case + 辅助函数 |
-| [FEA-06] | systray 缺少同步触发和开机自启 | ⚪ 低 | 回调触发同步；macOS plist + Windows registry 开机自启；优雅退出 |
+| [FEA-06] | systray 缺少同步触发和开机自启 | ⚪ 低 | 回调触发同步；macOS plist + Windows registry 开机自启；优雅退出（**已搁置**，见 FutureDesktopDevelop.md） |
 
 ---
 

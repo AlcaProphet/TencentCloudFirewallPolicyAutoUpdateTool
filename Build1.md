@@ -26,7 +26,7 @@
 | 13 | WebUI 后端 | ☑ 已完成 |
 | 14 | WebUI 前端 | ☑ 已完成 |
 | 15 | 告警 + 高级功能 | ☑ 已完成 |
-| 16 | 桌面端 | ☑ 已完成 |
+| 16 | 桌面端 | ☑ 已完成（**已搁置**，见 FutureDesktopDevelop.md） |
 
 > 状态标记：☐ 未开始 / ◧ 进行中 / ☑ 已完成
 
@@ -1917,7 +1917,9 @@ go build . && ./fwalizer  # 浏览器访问 http://127.0.0.1:9090
 
 ---
 
-### Step 16：桌面端（Phase 4）
+### Step 16：桌面端（Phase 4 · 已搁置）
+
+> ⚠️ **本 Step 对应功能已暂时搁置。** 代码归档至 `desktop/`，详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)。
 
 **目标：** 系统托盘常驻 + 开机自启。
 
