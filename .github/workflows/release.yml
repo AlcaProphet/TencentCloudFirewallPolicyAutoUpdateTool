@@ -22,13 +22,15 @@ jobs:
         include:
           - os: macos-15
             goarch: amd64
-            asset-name: fwalizer macOS Intel
+            asset-name: fwalizer-macOS-Intel
+            app-name: FWAlizer.app
           - os: macos-15
             goarch: arm64
-            asset-name: fwalizer macOS Apple Silicon
+            asset-name: fwalizer-macOS-AppleSilicon
+            app-name: FWAlizer.app
           - os: windows-2025
             goarch: amd64
-            asset-name: fwalizer Windows Desktop
+            asset-name: fwalizer-Windows.exe
     runs-on: ${{ matrix.os }}
     steps:
       - name: 检出代码
@@ -55,14 +57,26 @@ jobs:
           msystem: MINGW64
           install: mingw-w64-x86_64-toolchain
 
-      # ── macOS: 原生 CGO 编译 ──
+      # ── macOS: 原生 CGO 编译 + .app 打包 ──
       - name: 构建 macOS 桌面二进制
         if: runner.os == 'macOS'
         run: |
           LDFLAGS="-s -w -X github.com/alcaprophet/fwalizer/version.Version=${BUILD_VERSION}"
           CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} \
             go build -tags desktop -ldflags="${LDFLAGS}" \
-            -o "${{ matrix.asset-name }}" .
+            -o fwalizer .
+
+          # 创建 .app 包结构（macOS 托盘功能必须用 .app）
+          APP="${{ matrix.app-name }}"
+          mkdir -p "${APP}/Contents/MacOS"
+          mkdir -p "${APP}/Contents/Resources"
+          cp fwalizer "${APP}/Contents/MacOS/"
+          # 注入版本号到 Info.plist
+          sed "s/1.0/${BUILD_VERSION#v}/g" build/Info.plist > "${APP}/Contents/Info.plist"
+          chmod +x "${APP}/Contents/MacOS/fwalizer"
+
+          # 打包为 zip（GitHub Release 友好分发）
+          zip -r "${{ matrix.asset-name }}.zip" "${APP}"
 
       # ── Windows: CGO 编译（使用 PowerShell，Go 来自 setup-go，GCC 来自 setup-msys2）──
       - name: 构建 Windows 桌面二进制
@@ -73,7 +87,15 @@ jobs:
           $env:GOARCH = "${{ matrix.goarch }}"
           go build -tags desktop -ldflags="$env:LDFLAGS" -o "${{ matrix.asset-name }}" .
 
-      - name: 上传桌面产物
+      - name: 上传 macOS 产物
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset-name }}
+          path: ${{ matrix.asset-name }}.zip
+
+      - name: 上传 Windows 产物
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset-name }}

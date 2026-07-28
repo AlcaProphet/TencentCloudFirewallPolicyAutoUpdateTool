@@ -202,18 +202,43 @@ WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令�
 
 ## 桌面端系统托盘
 
-在 macOS 或 Windows 上使用 `-tags desktop` 编译后，启动 WebUI 模式会自动显示系统托盘图标：
+从 [GitHub Releases](https://github.com/alcaprophet/fwalizer/releases) 下载对应平台的桌面版：
+
+| 文件 | 平台 |
+|------|------|
+| `fwalizer-macOS-AppleSilicon.zip` | macOS（M 系列芯片） |
+| `fwalizer-macOS-Intel.zip` | macOS（Intel 芯片） |
+| `fwalizer-Windows.exe` | Windows |
+
+### macOS 使用
+
+1. 解压 zip，将 `FWAlizer.app` 拖入 `/Applications`
+2. **首次打开**需右键点击 →「打开」（因未签名公证，Gatekeeper 会拦截）
+3. 菜单栏出现托盘图标，自动打开浏览器进入 WebUI
+
+> ⚠️ 必须通过 `.app` 启动才显示托盘图标，直接在终端运行裸二进制时托盘不生效。
+
+### Windows 使用
+
+直接双击 `fwalizer-Windows.exe`，系统托盘出现图标。
+
+### 托盘功能
 
 - 托盘菜单：状态指示 / 打开配置面板 / 立即同步 / 开机自启 / 退出
 - 启动后自动打开浏览器进入 WebUI
 - 点击「退出」会等待当前同步轮次完成后再退出进程
 
+> macOS 开机自启通过 LaunchAgent plist 实现，Windows 通过注册表 Run 键实现。
+
+### 从源码编译桌面版
+
 ```bash
 CGO_ENABLED=1 go build -tags desktop -o fwalizer .
-./fwalizer
+# macOS 还需手工创建 .app 包装才能使用托盘：
+# mkdir -p FWAlizer.app/Contents/MacOS
+# cp fwalizer FWAlizer.app/Contents/MacOS/
+# cp build/Info.plist FWAlizer.app/Contents/
 ```
-
-> macOS 开机自启通过 LaunchAgent plist 实现，Windows 通过注册表 Run 键实现。
 
 ---
 
