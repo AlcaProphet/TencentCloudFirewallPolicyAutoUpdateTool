@@ -9,15 +9,31 @@ import (
 )
 
 // LogBroadcaster 将 slog 日志广播到 SSE 订阅者
+// level 与 stdout 日志级别一致（debug/info/warn/error，默认 info），保证 WebUI 日志流与终端输出级别一致
 type LogBroadcaster struct {
-	mu   sync.RWMutex
-	subs map[int]chan string
-	next int
+	mu    sync.RWMutex
+	subs  map[int]chan string
+	next  int
+	level slog.Level // 日志流级别（与 cfg.LogLevel 一致）
 }
 
-// NewLogBroadcaster 创建日志广播器
-func NewLogBroadcaster() *LogBroadcaster {
-	return &LogBroadcaster{subs: make(map[int]chan string)}
+// NewLogBroadcaster 创建日志广播器（level: debug/info/warn/error 字符串）
+func NewLogBroadcaster(level string) *LogBroadcaster {
+	return &LogBroadcaster{subs: make(map[int]chan string), level: parseLevel(level)}
+}
+
+// parseLevel 解析日志级别字符串（与 app.InitLogger 语义一致，默认 info）
+func parseLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // Subscribe 订阅日志流，返回 channel 和取消函数
@@ -46,7 +62,7 @@ func (b *LogBroadcaster) nextID() int {
 // ─── slog.Handler 实现 ───
 
 func (b *LogBroadcaster) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= slog.LevelDebug
+	return level >= b.level // 按日志流级别过滤，避免 debug 噪音（原为恒 >= Debug）
 }
 
 func (b *LogBroadcaster) Handle(_ context.Context, r slog.Record) error {

@@ -2,10 +2,12 @@ package syncer
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -32,11 +34,19 @@ type Syncer struct {
 	mu       sync.RWMutex
 	running  bool
 	lastSync time.Time
+
+	dryRunMu sync.Mutex // Dry Run 防重入
+
+	// 同步开关（暂停门控）：运行时镜像，启动时从 cfg.SyncEnabled 初始化
+	// 使用 atomic.Bool 避免 Pause()/Resume()（API goroutine）与 Run() 主循环并发写竞态
+	syncEnabled atomic.Bool
+	pauseCh     chan struct{} // 接收暂停信号，容量 1
+	resumeCh    chan struct{} // 接收恢复信号，容量 1
 }
 
 // New 创建同步引擎
 func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolver) *Syncer {
-	return &Syncer{
+	s := &Syncer{
 		cfg:       cfg,
 		providers: providers,
 		resolver:  resolver,
@@ -46,7 +56,11 @@ func New(cfg *config.Config, providers []provider.Provider, resolver *dns.Resolv
 		triggerCh: make(chan struct{}, 1),
 		stopCh:    make(chan struct{}),
 		doneCh:    make(chan struct{}),
+		pauseCh:   make(chan struct{}, 1),
+		resumeCh:  make(chan struct{}, 1),
 	}
+	s.syncEnabled.Store(cfg.SyncEnabled) // 运行时镜像从配置初始化
+	return s
 }
 
 // EventBus 返回事件总线（供外部订阅）
@@ -63,8 +77,14 @@ func (s *Syncer) Run() {
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
 
-	// 启动时立即执行一次
-	s.syncAll()
+	// 启动门控：开关关闭时跳过首次 syncAll，进入暂停等待（Design2 §7.1）
+	// 注意：waitForResume 返回后必须继续进入主循环，不可 return（否则恢复后定时同步失效）
+	if !s.syncEnabled.Load() {
+		slog.Info("同步已暂停（SyncEnabled=false），等待开启")
+		s.waitForResume(ticker)
+	} else {
+		s.syncAll()
+	}
 
 	for {
 		select {
@@ -75,14 +95,86 @@ func (s *Syncer) Run() {
 			s.syncAll()
 		case newCfg := <-s.configCh:
 			slog.Info("配置热重载")
-			s.cfg = newCfg
+			s.mu.Lock()
+			s.cfg = newCfg // 保持 Step 2 引入的锁结构
+			s.mu.Unlock()
 			ticker.Reset(newCfg.Interval)
+			// 5.6 开关同步：热重载变更 sync_enabled 时同步门控（DB 状态与运行时镜像一致）
+			if newCfg.SyncEnabled != s.syncEnabled.Load() {
+				if newCfg.SyncEnabled {
+					slog.Info("热重载开启同步")
+					s.syncEnabled.Store(true)
+					s.syncAll() // 立即执行首次
+				} else {
+					slog.Info("热重载暂停同步")
+					s.syncEnabled.Store(false)
+					s.pauseGate(ticker)
+				}
+			}
+		case <-s.pauseCh:
+			s.pauseGate(ticker)
 		case <-s.stopCh:
 			slog.Info("同步引擎停止")
 			return
 		}
 	}
 }
+
+// pauseGate 暂停门控：停止 ticker，进入等待子循环（resume/热重载开启/stop 均返回后回到主循环）
+func (s *Syncer) pauseGate(ticker *time.Ticker) {
+	ticker.Stop()
+	s.waitForResume(ticker)
+}
+
+// waitForResume 暂停等待子循环（Run 启动时暂停与运行中暂停共用）
+// 返回条件：收到 resumeCh / 热重载开启（configCh 携带 SyncEnabled=true）→ 已恢复 ticker 并执行首次 syncAll；
+// 收到 stopCh → 直接返回（外层 Run 退出）
+func (s *Syncer) waitForResume(ticker *time.Ticker) {
+	for {
+		select {
+		case <-s.resumeCh:
+			slog.Info("同步恢复")
+			s.syncEnabled.Store(true)
+			ticker.Reset(s.cfg.Interval)
+			s.syncAll() // 恢复后立即执行首次
+			return
+		case newCfg := <-s.configCh:
+			s.mu.Lock()
+			s.cfg = newCfg
+			s.mu.Unlock()
+			if newCfg.SyncEnabled {
+				s.syncEnabled.Store(true)
+				ticker.Reset(newCfg.Interval)
+				s.syncAll()
+				return
+			}
+			// SyncEnabled 仍为 false：继续等待（ticker 已停止，不触发同步）
+		case <-s.stopCh:
+			return
+		}
+	}
+}
+
+// Pause 暂停同步（非阻塞）
+func (s *Syncer) Pause() {
+	s.syncEnabled.Store(false)
+	select {
+	case s.pauseCh <- struct{}{}:
+	default: // 已在暂停中
+	}
+}
+
+// Resume 恢复同步（非阻塞）
+func (s *Syncer) Resume() {
+	s.syncEnabled.Store(true)
+	select {
+	case s.resumeCh <- struct{}{}:
+	default: // 已在运行中
+	}
+}
+
+// IsEnabled 返回当前开关状态
+func (s *Syncer) IsEnabled() bool { return s.syncEnabled.Load() }
 
 // Stop 优雅停止
 func (s *Syncer) Stop() {
@@ -120,8 +212,11 @@ func (s *Syncer) TriggerSync() {
 }
 
 // SyncStatus 同步状态
+// Enabled: 开关状态（true=开启，false=暂停）；Running 保持"引擎存活"语义
+// （Run() 存活于暂停子循环时 running 仍为 true，前端三态判断以 Enabled 为准）
 type SyncStatus struct {
 	Running  bool       `json:"running"`
+	Enabled  bool       `json:"enabled"`
 	LastSync *time.Time `json:"last_sync"`
 }
 
@@ -129,7 +224,7 @@ type SyncStatus struct {
 func (s *Syncer) Status() SyncStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	status := SyncStatus{Running: s.running}
+	status := SyncStatus{Running: s.running, Enabled: s.syncEnabled.Load()}
 	if !s.lastSync.IsZero() {
 		t := s.lastSync
 		status.LastSync = &t
@@ -143,49 +238,81 @@ func (s *Syncer) setRunning(v bool) {
 	s.mu.Unlock()
 }
 
-// DryRunResult 试运行结果
+// ErrDryRunInProgress 防重入冲突错误（多个 Dry Run 并发执行时返回）
+var ErrDryRunInProgress = errors.New("Dry Run 正在执行中")
+
+// DryRunResponse 试运行响应（包装对象：空状态语义化）
+type DryRunResponse struct {
+	Results  []DryRunResult `json:"results"`
+	Warnings []string       `json:"warnings"`
+}
+
+// DryRunResult 试运行结果（明细化：to_add/to_delete 为规则数组）
 type DryRunResult struct {
-	Provider string `json:"provider"`
-	Domain   string `json:"domain"`
-	ToAdd    int    `json:"to_add"`
-	ToDelete int    `json:"to_delete"`
-	Error    string `json:"error,omitempty"`
+	Provider string               `json:"provider"`
+	Domain   string               `json:"domain"`
+	ToAdd    []provider.RuleChange `json:"to_add"`
+	ToDelete []provider.RuleChange `json:"to_delete"`
+	Error    string               `json:"error,omitempty"`
 }
 
 // DryRun 试运行：DNS 解析 + Diff，不写入不触发事件
-func (s *Syncer) DryRun() ([]DryRunResult, error) {
-	var results []DryRunResult
-	for _, p := range s.providers {
-		rules := filterRulesForTarget(s.cfg.DomainRules, p.TargetIndex())
+// 快照锁：RLock 保护 providers/cfg/resolver（与 Step 2 的 cfg 写锁配对，消除热重载并发竞态）
+// 防重入：dryRunMu.TryLock，冲突返回 ErrDryRunInProgress（handler 转 409）
+// 限速：与 syncAll 一致，同云厂商请求间加入间隔
+func (s *Syncer) DryRun() (DryRunResponse, error) {
+	if !s.dryRunMu.TryLock() {
+		return DryRunResponse{}, ErrDryRunInProgress
+	}
+	defer s.dryRunMu.Unlock()
+
+	// 快照：RLock 保护 providers/cfg/resolver（整个遍历使用快照，期间热重载不影响本次结果）
+	s.mu.RLock()
+	providers := s.providers
+	cfg := s.cfg
+	resolver := s.resolver
+	s.mu.RUnlock()
+
+	resp := DryRunResponse{Results: []DryRunResult{}}
+	if len(providers) == 0 {
+		resp.Warnings = append(resp.Warnings, "暂无云资源目标，请先在云资源管理页配置")
+	}
+	if len(cfg.DomainRules) == 0 {
+		resp.Warnings = append(resp.Warnings, "暂无域名规则，请先在域名规则页配置")
+	}
+	for _, p := range providers {
+		rules := filterRulesForTarget(cfg.DomainRules, p.TargetIndex())
 		for _, rule := range rules {
 			result := DryRunResult{Provider: p.Name(), Domain: rule.Host}
-
-			resolved, err := s.resolver.Resolve(context.Background(), rule.Host)
+			resolved, err := resolver.Resolve(context.Background(), rule.Host)
 			if err != nil {
 				result.Error = err.Error()
-				results = append(results, result)
+				resp.Results = append(resp.Results, result)
 				continue
 			}
 			if !rule.EnableIPv6 {
 				resolved = filterIPv4(resolved)
 			}
-
 			allRules, err := p.GetRules()
 			if err != nil {
 				result.Error = err.Error()
-				results = append(results, result)
+				resp.Results = append(resp.Results, result)
 				continue
 			}
-
-			owned := provider.OwnedRules(allRules, s.cfg.Tag)
-			desc := truncateDesc(tag.Format(s.cfg.Tag, rule.Comment), p.CloudType())
+			owned := provider.OwnedRules(allRules, cfg.Tag)
+			desc := truncateDesc(tag.Format(cfg.Tag, rule.Comment), p.CloudType())
 			diff := provider.Diff(resolved, rule, desc, owned, p)
-			result.ToAdd = len(diff.ToAdd)
-			result.ToDelete = len(diff.ToDelete)
-			results = append(results, result)
+			for _, a := range diff.ToAdd {
+				result.ToAdd = append(result.ToAdd, provider.RuleChangeFromAction(a))
+			}
+			for _, r := range diff.ToDelete {
+				result.ToDelete = append(result.ToDelete, provider.RuleChangeFromInfo(r))
+			}
+			resp.Results = append(resp.Results, result)
+			time.Sleep(rateLimitInterval(p.CloudType())) // 限速：与 syncAll 一致（AGENTS.md §七）
 		}
 	}
-	return results, nil
+	return resp, nil
 }
 
 // syncAll 执行一轮完整同步

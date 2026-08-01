@@ -77,7 +77,13 @@ func (p *TCCVM) GetRules() ([]config.RuleInfo, error) {
 	}
 
 	// 只取 Ingress（入站）规则
-	for i, r := range policySet.Ingress {
+	// PolicyIndex 是安全组全方向全局索引（Ingress+Egress 共用编号空间），与 Ingress 数组索引不一致；
+	// 缺失时跳过该规则（不参与本工具删除），避免按错误索引定位误删 Egress 或其他规则
+	for _, r := range policySet.Ingress {
+		if r.PolicyIndex == nil {
+			slog.Warn("CVM 规则缺少 PolicyIndex，跳过该规则（避免误删）", "description", strVal(r.PolicyDescription))
+			continue
+		}
 		info := config.RuleInfo{
 			Protocol:      strings.ToUpper(strVal(r.Protocol)),
 			Port:          strVal(r.Port),
@@ -85,11 +91,7 @@ func (p *TCCVM) GetRules() ([]config.RuleInfo, error) {
 			Ipv6CidrBlock: strVal(r.Ipv6CidrBlock),
 			Action:        strings.ToUpper(strVal(r.Action)),
 			Description:   strVal(r.PolicyDescription),
-			PolicyIndex:   strconv.Itoa(i), // 使用数组索引作为 PolicyIndex
-		}
-		// 如果 API 返回了 PolicyIndex，使用它
-		if r.PolicyIndex != nil {
-			info.PolicyIndex = strconv.FormatInt(*r.PolicyIndex, 10)
+			PolicyIndex:   strconv.FormatInt(*r.PolicyIndex, 10),
 		}
 		rules = append(rules, info)
 	}

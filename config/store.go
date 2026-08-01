@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -442,9 +443,15 @@ func (s *Store) AddSyncLog(log SyncLog) error {
 	if err != nil {
 		return err
 	}
-	// 保留最近 1000 条
-	_, err = s.db.Exec("DELETE FROM sync_logs WHERE id NOT IN (SELECT id FROM sync_logs ORDER BY id DESC LIMIT 1000)")
-	return err
+	// 仅当超过保留上限（1000 条）时执行清理，避免每次写入全表扫描（O(n)）
+	var count int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sync_logs").Scan(&count); err == nil && count > 1000 {
+		_, err = s.db.Exec("DELETE FROM sync_logs WHERE id NOT IN (SELECT id FROM sync_logs ORDER BY id DESC LIMIT 1000)")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetSyncLogs 获取最近 N 条同步日志
@@ -495,6 +502,7 @@ func (s *Store) LoadConfig() (*Config, error) {
 		LogLevel:         "info",
 		WebUIPort:        60200,
 		Mode:             "webui",
+		SyncEnabled:      true, // 默认开启（向后兼容：老用户无该键时保持启动即同步）
 		TCAccessID:       settings["tc_access_id"],
 		TCAccessKey:      settings["tc_access_key"],
 		AliAccessID:      settings["ali_access_id"],
@@ -507,6 +515,8 @@ func (s *Store) LoadConfig() (*Config, error) {
 	if v := settings["interval"]; v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.Interval = d
+		} else {
+			slog.Warn("INTERVAL 格式无效，保留默认值", "value", v, "default", 5*time.Minute)
 		}
 	}
 	if v := settings["dns"]; v != "" {
@@ -529,6 +539,9 @@ func (s *Store) LoadConfig() (*Config, error) {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.DNSTimeout = d
 		}
+	}
+	if v := settings["sync_enabled"]; v != "" {
+		cfg.SyncEnabled = v == "true"
 	}
 
 	return cfg, nil

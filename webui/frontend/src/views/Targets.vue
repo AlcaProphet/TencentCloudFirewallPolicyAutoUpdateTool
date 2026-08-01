@@ -1,24 +1,23 @@
 <script setup lang="ts">
 import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, useMessage } from 'naive-ui'
 import { ref, onMounted, h } from 'vue'
+import { request } from '../api'
+import { cloudOptions, cloudLabelMap } from '../constants'
+import type { TargetConfig, TestConnectionResult } from '../types'
 
-const targets = ref<any[]>([])
+const targets = ref<TargetConfig[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({ cloud_type: 'tc_lighthouse', region: '', resource_id: '' })
 const testResult = ref('')
 const message = useMessage()
 
-const cloudOptions = [
-  { label: '腾讯云轻量云', value: 'tc_lighthouse' },
-  { label: '腾讯云CVM', value: 'tc_cvm' },
-  { label: '阿里云轻量云', value: 'ali_swas' },
-  { label: '阿里云ECS', value: 'ali_ecs' },
-]
-
 async function load() {
-  const res = await fetch('/api/targets')
-  targets.value = await res.json() || []
+  try {
+    targets.value = await request<TargetConfig[]>('/api/targets')
+  } catch (e: any) {
+    message.error(`加载目标失败: ${e.message}`)
+  }
 }
 
 onMounted(load)
@@ -29,7 +28,7 @@ function openAdd() {
   showModal.value = true
 }
 
-function openEdit(row: any) {
+function openEdit(row: TargetConfig) {
   editingId.value = row.id
   form.value = { cloud_type: row.cloud_type, region: row.region, resource_id: row.resource_id }
   showModal.value = true
@@ -38,36 +37,50 @@ function openEdit(row: any) {
 async function saveTarget() {
   const method = editingId.value ? 'PUT' : 'POST'
   const url = editingId.value ? `/api/targets/${editingId.value}` : '/api/targets'
-  await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cloud_type: form.value.cloud_type, region: form.value.region, resource_id: form.value.resource_id }),
-  })
-  showModal.value = false
-  message.success(editingId.value ? '更新成功' : '添加成功')
-  load()
+  try {
+    await request(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cloud_type: form.value.cloud_type, region: form.value.region, resource_id: form.value.resource_id }),
+    })
+    showModal.value = false
+    message.success(editingId.value ? '更新成功' : '添加成功')
+    load()
+  } catch (e: any) {
+    message.error(`保存失败: ${e.message}`) // 修复：非 2xx 不再误报成功
+  }
 }
 
-async function deleteTarget(row: any) {
-  await fetch(`/api/targets/${row.id}`, { method: 'DELETE' })
-  message.success('删除成功')
-  load()
+async function deleteTarget(row: TargetConfig) {
+  try {
+    await request(`/api/targets/${row.id}`, { method: 'DELETE' })
+    message.success('删除成功')
+    load()
+  } catch (e: any) {
+    message.error(`删除失败: ${e.message}`) // 修复：非 2xx 不再误报成功
+  }
 }
 
+// 弹窗内表单级「测试连接」：用未保存的表单值验证（保留），15s 超时
 async function testConnection() {
   testResult.value = '测试中...'
-  const res = await fetch('/api/test-connection', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cloud_type: form.value.cloud_type, region: form.value.region, resource_id: form.value.resource_id }),
-  })
-  const data = await res.json()
-  testResult.value = data.success ? data.message : `失败: ${data.error}`
+  try {
+    const data = await request<TestConnectionResult>(
+      '/api/test-connection',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cloud_type: form.value.cloud_type, region: form.value.region, resource_id: form.value.resource_id }),
+      },
+      15000
+    )
+    testResult.value = data.success ? (data.message || '连接成功') : `失败: ${data.error || '未知错误'}`
+  } catch (e: any) {
+    testResult.value = e?.message === '请求超时'
+      ? '连接超时（15 秒），请检查网络或云 API 状态'
+      : `请求失败: ${e.message}`
+  }
 }
-
-const cloudLabelMap: Record<string, string> = Object.fromEntries(
-  cloudOptions.map(o => [o.value, o.label])
-)
 
 const columns = [
   { title: '#', key: 'index', render: (_: any, i: number) => i + 1 },

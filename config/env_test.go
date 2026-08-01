@@ -259,3 +259,45 @@ func TestValidate_Success(t *testing.T) {
 		t.Fatalf("合法配置不应报错: %v", err)
 	}
 }
+
+// ─── SyncEnabled 开关解析 ───
+
+func TestParseEnv_SyncEnabledTrue(t *testing.T) {
+	cfg, err := ParseEnv("SYNC_ENABLED=true\n")
+	if err != nil {
+		t.Fatalf("ParseEnv 失败: %v", err)
+	}
+	if !cfg.SyncEnabled {
+		t.Error("SYNC_ENABLED=true 应解析为 true")
+	}
+}
+
+func TestParseEnv_SyncEnabledFalse(t *testing.T) {
+	cfg, err := ParseEnv("SYNC_ENABLED=false\n")
+	if err != nil {
+		t.Fatalf("ParseEnv 失败: %v", err)
+	}
+	if cfg.SyncEnabled {
+		t.Error("SYNC_ENABLED=false 应解析为 false")
+	}
+}
+
+func TestParseEnv_SyncEnabledDefault(t *testing.T) {
+	cfg, err := ParseEnv("")
+	if err != nil {
+		t.Fatalf("ParseEnv 失败: %v", err)
+	}
+	if !cfg.SyncEnabled {
+		t.Error("未设置 SYNC_ENABLED 应默认 true（向后兼容）")
+	}
+}
+
+func TestParseEnv_SyncEnabledInvalid(t *testing.T) {
+	cfg, err := ParseEnv("SYNC_ENABLED=abc\n")
+	if err != nil {
+		t.Fatalf("ParseEnv 失败: %v", err)
+	}
+	if cfg.SyncEnabled {
+		t.Error("SYNC_ENABLED=abc 非法值应解析为 false（v == true 语义）")
+	}
+}

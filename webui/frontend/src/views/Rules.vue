@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
 import { ref, onMounted, h, watch } from 'vue'
+import { request } from '../api'
+import type { DomainRule } from '../types'
 
-const rules = ref<any[]>([])
+const rules = ref<DomainRule[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({ host: '', protocol: 'TCP', ports: '', action: 'ACCEPT', comment: '', enable_ipv6: false, targets: [] as number[] })
@@ -29,17 +31,23 @@ watch(() => form.value.protocol, (newProto) => {
 })
 
 async function load() {
-  const res = await fetch('/api/rules')
-  rules.value = await res.json() || []
+  try {
+    rules.value = await request<DomainRule[]>('/api/rules')
+  } catch (e: any) {
+    message.error(`加载规则失败: ${e.message}`)
+  }
 }
 
 async function loadTargets() {
-  const res = await fetch('/api/targets')
-  const data: any[] = await res.json() || []
-  targetOptions.value = data.map((t: any) => ({
-    label: `${t.cloud_type} / ${t.resource_id}`,
-    value: t.id,
-  }))
+  try {
+    const data = await request<any[]>('/api/targets')
+    targetOptions.value = data.map((t: any) => ({
+      label: `${t.cloud_type} / ${t.resource_id}`,
+      value: t.id,
+    }))
+  } catch (e: any) {
+    message.error(`加载目标失败: ${e.message}`)
+  }
 }
 
 onMounted(async () => {
@@ -62,20 +70,28 @@ function openEdit(row: any) {
 async function saveRule() {
   const method = editingId.value ? 'PUT' : 'POST'
   const url = editingId.value ? `/api/rules/${editingId.value}` : '/api/rules'
-  await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(form.value),
-  })
-  showModal.value = false
-  message.success(editingId.value ? '更新成功' : '添加成功')
-  load()
+  try {
+    await request(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form.value),
+    })
+    showModal.value = false
+    message.success(editingId.value ? '更新成功' : '添加成功')
+    load()
+  } catch (e: any) {
+    message.error(`保存失败: ${e.message}`) // 修复：非 2xx 不再误报成功
+  }
 }
 
 async function deleteRule(row: any) {
-  await fetch(`/api/rules/${row.id}`, { method: 'DELETE' })
-  message.success('删除成功')
-  load()
+  try {
+    await request(`/api/rules/${row.id}`, { method: 'DELETE' })
+    message.success('删除成功')
+    load()
+  } catch (e: any) {
+    message.error(`删除失败: ${e.message}`) // 修复：非 2xx 不再误报成功
+  }
 }
 
 const columns = [

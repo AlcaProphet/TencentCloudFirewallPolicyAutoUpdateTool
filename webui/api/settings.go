@@ -17,12 +17,13 @@ func (d *Deps) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// 填充默认值（key 不存在或值为空时），使前端能显示当前生效配置
 	defaults := map[string]string{
-		"tag":         "auto-dns",
-		"interval":    "5m",
-		"dns":         "223.5.5.5",
-		"log_level":   "info",
-		"dns_timeout": "10s",
-		"webui_port":  "60200",
+		"tag":                "auto-dns",
+		"interval":           "5m",
+		"dns":                "223.5.5.5",
+		"log_level":          "info",
+		"dns_timeout":        "10s",
+		"dns_fail_threshold": "5",
+		"webui_port":         "60200",
 	}
 	for k, v := range defaults {
 		if settings[k] == "" {

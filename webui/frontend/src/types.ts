@@ -21,14 +21,38 @@ export interface DomainRule {
 export interface SyncStatus {
   running: boolean
   last_sync: string | null
+  enabled: boolean // 同步开关（Step 11 起后端必返回）
 }
 
+// RuleChange 规则变更摘要（Dry Run 明细化）
+export interface RuleChange {
+  protocol: string
+  port: string
+  action: string
+  cidr: string // IPv4 或 IPv6 的 CIDR
+  desc: string // 规则描述（含 [TAG]）
+}
+
+// DryRunResult 试运行结果（to_add/to_delete 为规则明细数组）
 export interface DryRunResult {
   provider: string
   domain: string
-  to_add: number
-  to_delete: number
-  error: string
+  to_add: RuleChange[]
+  to_delete: RuleChange[]
+  error?: string
+}
+
+// DryRunResponse Dry Run 响应包装（空状态语义化）
+export interface DryRunResponse {
+  results: DryRunResult[]
+  warnings: string[]
+}
+
+// TestConnectionResult 连接测试结果
+export interface TestConnectionResult {
+  success: boolean
+  message?: string
+  error?: string
 }
 
 export interface SyncLogEntry {

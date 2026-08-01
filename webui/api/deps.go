@@ -13,7 +13,9 @@ import (
 type Syncer interface {
 	Status() syncer.SyncStatus
 	TriggerSync()
-	DryRun() ([]syncer.DryRunResult, error)
+	DryRun() (syncer.DryRunResponse, error)
+	Pause()  // 暂停同步
+	Resume() // 恢复同步
 }
 
 // EventSubscriber 事件订阅接口（用于 SSE 推送）
@@ -47,6 +49,8 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sync/status", d.handleSyncStatus)
 	mux.HandleFunc("POST /api/sync/trigger", d.handleSyncTrigger)
 	mux.HandleFunc("POST /api/sync/dryrun", d.handleSyncDryRun)
+	mux.HandleFunc("POST /api/sync/pause", d.handleSyncPause)
+	mux.HandleFunc("POST /api/sync/resume", d.handleSyncResume)
 	mux.HandleFunc("GET /api/sync/events", d.handleSyncEvents)
 	mux.HandleFunc("GET /api/sync/logs", d.handleGetSyncLogs)
 	// 实时日志流

@@ -192,7 +192,7 @@ Syncer ──→ Provider 接口
 ├── 域名规则管理（可视化编辑、绑定云资源、DNS 测试）
 ├── 全局设置（DNS、间隔、TAG）
 ├── 同步日志（最近 N 条记录）
-├── 高级功能（Dry Run、配置导入/导出、健康检查）
+├── 运行测试（Dry Run 逐条规则明细、连接测试）
 └── 告警配置（邮件、Webhook）
 ```
 
@@ -271,7 +271,7 @@ notifier/
 | 桌面存储路径 | 系统标准路径 |
 | 协议支持 | TCP / UDP / TCP+UDP / ICMP（TCP+UDP 仅 SWAS 原生支持，其他云自动拆分为两条） |
 | 端口输入格式 | 单端口、逗号分隔、范围（`8000-8010`）、`ALL` |
-| Dry Run | 执行到 Diff 为止，不实际写入 |
+| Dry Run | 返回 `to_add`/`to_delete` 规则明细列表（含协议/端口/动作/CIDR/描述），响应为 `{results, warnings}` 包装；不实际写入 |
 | 配置导入/导出 | JSON 格式 |
 | SQLite 并发 | WAL 模式 + 短事务 |
 | 进程锁 | WebUI 模式 pidfile 防多实例 |

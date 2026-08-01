@@ -18,19 +18,19 @@
 
 | Step | 内容 | 设计依据 | 状态 |
 |------|------|---------|------|
-| 1 | R16-01/02 Provider 正确性修复（ICMP Diff 端口归一化 + CVM PolicyIndex fallback） | Issue3 §6.2 | ☐ 未开始 |
-| 2 | R16-03~06 运行时与基础设施修复（日志流级别 / cfg 加锁 / 日志清理 / 死代码） | Issue3 §6.2 | ☐ 未开始 |
-| 3 | 前端共享基建（`api.ts`/`constants.ts`/`types.ts`/`useDryRun.ts`） | Design2 §8.5 | ☐ 未开始 |
-| 4 | 后端 Dry Run 升级（明细化/包装/限速/快照锁/防重入）+ 连接测试凭据提示 | Design2 §6.6/§6.7 | ☐ 未开始 |
-| 5 | 运行测试页（`RunTest.vue` + `DryRunResults.vue` + 路由/菜单） | Design2 §8.5 | ☐ 未开始 |
-| 6 | 页面收敛（Settings/Targets/Dashboard 接入 `api.ts`，删除 Advanced 页） | Design2 §8.6/§8.7 | ☐ 未开始 |
-| 7 | 数据层：`Config.SyncEnabled` + SQLite/`.env` 读写 | Design2 §三/§四 | ☐ 未开始 |
-| 8 | Syncer 暂停门控（Pause Gate + 热重载开关同步） | Design2 §五 | ☐ 未开始 |
-| 9 | API 层：`pause`/`resume` 端点 + trigger 保护 + `SyncStatus.enabled` | Design2 §6.1-6.5 | ☐ 未开始 |
-| 10 | 启动决策统一（`main.go`/`app.go` 始终启动 `Run()`） | Design2 §7 | ☐ 未开始 |
-| 11 | Dashboard 同步开关 + 按钮状态联动 | Design2 §8.1-8.3 | ☐ 未开始 |
-| 12 | 文档同步（Design1/AGENTS/README/.env.example） | Design2 §12.1 | ☐ 未开始 |
-| 13 | 低优先可选附项（Design2 §12.4 A-D，可独立执行） | Design2 §12.4 | ☐ 未开始（可选） |
+| 1 | R16-01/02 Provider 正确性修复（ICMP Diff 端口归一化 + CVM PolicyIndex fallback） | Issue3 §6.2 | ✅ 验收通过 |
+| 2 | R16-03~06 运行时与基础设施修复（日志流级别 / cfg 加锁 / 日志清理 / 死代码） | Issue3 §6.2 | ✅ 验收通过 |
+| 3 | 前端共享基建（`api.ts`/`constants.ts`/`types.ts`/`useDryRun.ts`） | Design2 §8.5 | ✅ 验收通过 |
+| 4 | 后端 Dry Run 升级（明细化/包装/限速/快照锁/防重入）+ 连接测试凭据提示 | Design2 §6.6/§6.7 | ✅ 验收通过 |
+| 5 | 运行测试页（`RunTest.vue` + `DryRunResults.vue` + 路由/菜单） | Design2 §8.5 | ✅ 验收通过 |
+| 6 | 页面收敛（Settings/Targets/Dashboard 接入 `api.ts`，删除 Advanced 页） | Design2 §8.6/§8.7 | ✅ 验收通过 |
+| 7 | 数据层：`Config.SyncEnabled` + SQLite/`.env` 读写 | Design2 §三/§四 | ✅ 验收通过 |
+| 8 | Syncer 暂停门控（Pause Gate + 热重载开关同步） | Design2 §五 | ✅ 验收通过 |
+| 9 | API 层：`pause`/`resume` 端点 + trigger 保护 + `SyncStatus.enabled` | Design2 §6.1-6.5 | ✅ 验收通过 |
+| 10 | 启动决策统一（`main.go`/`app.go` 始终启动 `Run()`） | Design2 §7 | ✅ 验收通过 |
+| 11 | Dashboard 同步开关 + 按钮状态联动 | Design2 §8.1-8.3 | ✅ 验收通过 |
+| 12 | 文档同步（Design1/AGENTS/README/.env.example） | Design2 §12.1 | ✅ 验收通过 |
+| 13 | 低优先可选附项（Design2 §12.4 A-D，可独立执行） | Design2 §12.4 | ✅ 验收通过 |
 
 > 状态标记：☐ 未开始 / ◧ 进行中 / ✅ 验收通过
 

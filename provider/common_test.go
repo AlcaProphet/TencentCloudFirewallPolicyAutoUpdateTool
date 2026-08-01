@@ -282,3 +282,163 @@ func TestClientPool(t *testing.T) {
 		t.Errorf("create 调用次数 = %d, want 1", callCount)
 	}
 }
+
+// TestDiff_ICMPPortNormalize R16-01：ICMP 规则 desired 端口 -1/-1（SWAS 云格式）与 existing 端口 ALL（归一化格式）应等价，Diff 为空
+func TestDiff_ICMPPortNormalize(t *testing.T) {
+	p := &mockProvider{cloudType: config.CloudAliSWAS}
+	resolved := []dns.ResolvedIP{
+		{IP: net.ParseIP("1.2.3.4"), IsIPv6: false},
+	}
+	rule := config.DomainRule{
+		Host:     "ping.example.com",
+		Protocol: "ICMP",
+		Ports:    "ALL",
+		Action:   "ACCEPT",
+	}
+	desc := "[auto-dns] ping"
+	// existing 侧：SWAS GetRules 归一化后端口为 ALL
+	existing := []config.RuleInfo{
+		{Protocol: "ICMP", Port: "ALL", CidrBlock: "1.2.3.4/32", Action: "ACCEPT", Description: desc, RuleID: "r-1"},
+	}
+
+	diff := Diff(resolved, rule, desc, existing, p)
+	if len(diff.ToAdd) != 0 {
+		t.Errorf("ToAdd 数量 = %d, want 0（ICMP -1/-1 与 ALL 应等价）", len(diff.ToAdd))
+	}
+	if len(diff.ToDelete) != 0 {
+		t.Errorf("ToDelete 数量 = %d, want 0", len(diff.ToDelete))
+	}
+}
+
+// TestDiff_ICMPCVM R16-01：CVM desired 端口 ALL 与 existing 空串（CVM 云端省略 Port）应等价，Diff 为空
+func TestDiff_ICMPCVM(t *testing.T) {
+	p := &mockProvider{cloudType: config.CloudTCCVM}
+	resolved := []dns.ResolvedIP{
+		{IP: net.ParseIP("1.2.3.4"), IsIPv6: false},
+	}
+	rule := config.DomainRule{
+		Host:     "ping.example.com",
+		Protocol: "ICMP",
+		Ports:    "ALL",
+		Action:   "ACCEPT",
+	}
+	desc := "[auto-dns] ping"
+	existing := []config.RuleInfo{
+		{Protocol: "ICMP", Port: "", CidrBlock: "1.2.3.4/32", Action: "ACCEPT", Description: desc, PolicyIndex: "10"},
+	}
+
+	diff := Diff(resolved, rule, desc, existing, p)
+	if len(diff.ToAdd) != 0 {
+		t.Errorf("ToAdd 数量 = %d, want 0（CVM ICMP ALL 与空串应等价）", len(diff.ToAdd))
+	}
+	if len(diff.ToDelete) != 0 {
+		t.Errorf("ToDelete 数量 = %d, want 0", len(diff.ToDelete))
+	}
+}
+
+// TestDiff_NonICMPUnchanged 回归：非 ICMP 规则端口比较行为不变；TCP ALL（SWAS -1/-1）与 ALL 等价
+func TestDiff_NonICMPUnchanged(t *testing.T) {
+	p := &mockProvider{cloudType: config.CloudAliSWAS}
+	resolved := []dns.ResolvedIP{
+		{IP: net.ParseIP("1.2.3.4"), IsIPv6: false},
+	}
+
+	// TCP 规则：desired 443（ConvertPorts 后为 443/443）对 existing 443 → 空 Diff
+	rule := config.DomainRule{
+		Host:     "api.example.com",
+		Protocol: "TCP",
+		Ports:    "443",
+		Action:   "ACCEPT",
+	}
+	desc := "[auto-dns] 生产API"
+	existing := []config.RuleInfo{
+		{Protocol: "TCP", Port: "443", CidrBlock: "1.2.3.4/32", Action: "ACCEPT", Description: desc, RuleID: "r-1"},
+	}
+	diff := Diff(resolved, rule, desc, existing, p)
+	if len(diff.ToAdd) != 0 || len(diff.ToDelete) != 0 {
+		t.Errorf("TCP 443 应无变更, ToAdd=%d ToDelete=%d", len(diff.ToAdd), len(diff.ToDelete))
+	}
+
+	// TCP ALL 规则：desired -1/-1（SWAS 云格式）对 existing ALL → 空 Diff（非 ICMP 的 -1/-1 归一化）
+	ruleAll := config.DomainRule{
+		Host:     "any.example.com",
+		Protocol: "TCP",
+		Ports:    "ALL",
+		Action:   "ACCEPT",
+	}
+	existingAll := []config.RuleInfo{
+		{Protocol: "TCP", Port: "ALL", CidrBlock: "1.2.3.4/32", Action: "ACCEPT", Description: desc, RuleID: "r-2"},
+	}
+	diffAll := Diff(resolved, ruleAll, desc, existingAll, p)
+	if len(diffAll.ToAdd) != 0 || len(diffAll.ToDelete) != 0 {
+		t.Errorf("TCP ALL 应无变更, ToAdd=%d ToDelete=%d", len(diffAll.ToAdd), len(diffAll.ToDelete))
+	}
+}
+
+func TestRuleChangeFromAction(t *testing.T) {
+	// IPv4 场景
+	a4 := config.RuleAction{
+		Protocol:    "TCP",
+		Port:        "443",
+		CidrBlock:   "1.2.3.4/32",
+		Action:      "ACCEPT",
+		Description: "[auto-dns] 生产API",
+	}
+	c4 := RuleChangeFromAction(a4)
+	if c4.Cidr != "1.2.3.4/32" {
+		t.Errorf("IPv4 Cidr = %s, want 1.2.3.4/32", c4.Cidr)
+	}
+	if c4.Desc != "[auto-dns] 生产API" {
+		t.Errorf("Desc = %s, want [auto-dns] 生产API", c4.Desc)
+	}
+	// IPv6 场景：CidrBlock 为空时取 Ipv6CidrBlock
+	a6 := config.RuleAction{
+		Protocol:      "ICMP",
+		Port:          "ALL",
+		Ipv6CidrBlock: "2001:db8::1/128",
+		Action:        "ACCEPT",
+		Description:   "[auto-dns] ping",
+	}
+	c6 := RuleChangeFromAction(a6)
+	if c6.Cidr != "2001:db8::1/128" {
+		t.Errorf("IPv6 Cidr = %s, want 2001:db8::1/128", c6.Cidr)
+	}
+	if c6.Protocol != "ICMP" {
+		t.Errorf("Protocol = %s, want ICMP", c6.Protocol)
+	}
+}
+
+func TestRuleChangeFromInfo(t *testing.T) {
+	// IPv4 场景
+	r4 := config.RuleInfo{
+		Protocol:    "TCP",
+		Port:        "80",
+		CidrBlock:   "5.6.7.8/32",
+		Action:      "ACCEPT",
+		Description: "[auto-dns] 旧IP",
+		RuleID:      "r-1",
+	}
+	c4 := RuleChangeFromInfo(r4)
+	if c4.Cidr != "5.6.7.8/32" {
+		t.Errorf("IPv4 Cidr = %s, want 5.6.7.8/32", c4.Cidr)
+	}
+	if c4.Desc != "[auto-dns] 旧IP" {
+		t.Errorf("Desc = %s, want [auto-dns] 旧IP", c4.Desc)
+	}
+	// IPv6 场景
+	r6 := config.RuleInfo{
+		Protocol:      "ICMP",
+		Port:          "",
+		Ipv6CidrBlock: "2001:db8::2/128",
+		Action:        "ACCEPT",
+		Description:   "[auto-dns] ping6",
+		PolicyIndex:   "10",
+	}
+	c6 := RuleChangeFromInfo(r6)
+	if c6.Cidr != "2001:db8::2/128" {
+		t.Errorf("IPv6 Cidr = %s, want 2001:db8::2/128", c6.Cidr)
+	}
+	if c6.Port != "" {
+		t.Errorf("Port = %s, want 空串", c6.Port)
+	}
+}

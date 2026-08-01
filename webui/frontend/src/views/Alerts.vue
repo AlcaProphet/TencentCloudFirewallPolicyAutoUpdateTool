@@ -1,6 +1,24 @@
 <script setup lang="ts">
-import { NCard, NForm, NFormItem, NInput, NSwitch, NButton, useMessage } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NSelect, NSwitch, NButton, useMessage } from 'naive-ui'
 import { ref, onMounted } from 'vue'
+import { request } from '../api'
+
+type AlertsData = {
+  email?: {
+    enabled: boolean
+    host: string
+    port: string
+    username: string
+    password: string
+    from_addr: string
+    to_addr: string
+  }
+  webhook?: {
+    enabled: boolean
+    url: string
+    channel: string
+  }
+}
 
 const message = useMessage()
 
@@ -23,10 +41,13 @@ const webhook = ref({
 const saving = ref(false)
 
 async function load() {
-  const res = await fetch('/api/alerts')
-  const data = await res.json()
-  if (data.email) email.value = data.email
-  if (data.webhook) webhook.value = data.webhook
+  try {
+    const data = await request<AlertsData>('/api/alerts')
+    if (data.email) email.value = data.email
+    if (data.webhook) webhook.value = data.webhook
+  } catch (e: any) {
+    message.error(`加载告警配置失败: ${e.message}`)
+  }
 }
 
 onMounted(load)
@@ -34,17 +55,12 @@ onMounted(load)
 async function save() {
   saving.value = true
   try {
-    const res = await fetch('/api/alerts', {
+    await request('/api/alerts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.value, webhook: webhook.value }),
     })
-    if (res.ok) {
-      message.success('保存成功')
-    } else {
-      const data = await res.json()
-      message.error(`保存失败: ${data.error}`)
-    }
+    message.success('保存成功')
   } catch (e: any) {
     message.error(`保存失败: ${e.message}`)
   } finally {

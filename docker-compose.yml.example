@@ -23,6 +23,9 @@ services:
       # 同步间隔（可选，默认 5m）
       - INTERVAL=5m
 
+      # 同步全局开关（可选，默认 true；false 时启动不执行同步）
+      # - SYNC_ENABLED=true
+
       # 自定义 DNS 服务器（可选，默认 223.5.5.5）
       # - DNS=223.5.5.5
 

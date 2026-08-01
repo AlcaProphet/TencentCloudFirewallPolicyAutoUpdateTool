@@ -26,6 +26,7 @@ func OwnedRules(allRules []config.RuleInfo, tagStr string) []config.RuleInfo {
 }
 
 // ruleKey 用于比较规则是否相同
+// port 字段经 normalizePortForCompare 归一化，保证 ICMP 规则两端（desired 云格式 / existing 归一化格式）可正确比较
 type ruleKey struct {
 	protocol      string
 	port          string
@@ -34,10 +35,24 @@ type ruleKey struct {
 	action        string
 }
 
+// normalizePortForCompare 端口比较归一化：
+// 协议为 ICMP/ICMPv6 时，-1/-1、ALL、空串三者等价（desired 侧为云厂商格式、existing 侧为归一化格式，避免 ICMP 规则永不收敛）
+// 归一化仅用于比较，不影响 CreateRules/GetRules 的请求/返回格式
+func normalizePortForCompare(protocol, port string) string {
+	proto := strings.ToUpper(protocol)
+	if proto == "ICMP" || proto == "ICMPV6" {
+		return "ALL"
+	}
+	if strings.EqualFold(port, "-1/-1") {
+		return "ALL"
+	}
+	return strings.ToUpper(port)
+}
+
 func keyOf(r config.RuleInfo) ruleKey {
 	return ruleKey{
 		protocol:      strings.ToUpper(r.Protocol),
-		port:          strings.ToUpper(r.Port),
+		port:          normalizePortForCompare(r.Protocol, r.Port),
 		cidrBlock:     r.CidrBlock,
 		ipv6CidrBlock: r.Ipv6CidrBlock,
 		action:        strings.ToUpper(r.Action),
@@ -47,7 +62,7 @@ func keyOf(r config.RuleInfo) ruleKey {
 func keyOfAction(r config.RuleAction) ruleKey {
 	return ruleKey{
 		protocol:      strings.ToUpper(r.Protocol),
-		port:          strings.ToUpper(r.Port),
+		port:          normalizePortForCompare(r.Protocol, r.Port),
 		cidrBlock:     r.CidrBlock,
 		ipv6CidrBlock: r.Ipv6CidrBlock,
 		action:        strings.ToUpper(r.Action),
@@ -199,4 +214,31 @@ func strVal(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// RuleChange 规则变更摘要（供前端直接渲染）
+type RuleChange struct {
+	Protocol string `json:"protocol"`
+	Port     string `json:"port"`
+	Action   string `json:"action"`
+	Cidr     string `json:"cidr"` // IPv4 或 IPv6 的 CIDR（如 1.2.3.4/32）
+	Desc     string `json:"desc"` // 规则描述（含 [TAG]）
+}
+
+// RuleChangeFromAction 从期望规则构造摘要（to_add）
+func RuleChangeFromAction(a config.RuleAction) RuleChange {
+	cidr := a.CidrBlock
+	if cidr == "" {
+		cidr = a.Ipv6CidrBlock
+	}
+	return RuleChange{Protocol: a.Protocol, Port: a.Port, Action: a.Action, Cidr: cidr, Desc: a.Description}
+}
+
+// RuleChangeFromInfo 从云端规则构造摘要（to_delete）
+func RuleChangeFromInfo(r config.RuleInfo) RuleChange {
+	cidr := r.CidrBlock
+	if cidr == "" {
+		cidr = r.Ipv6CidrBlock
+	}
+	return RuleChange{Protocol: r.Protocol, Port: r.Port, Action: r.Action, Cidr: cidr, Desc: r.Description}
 }

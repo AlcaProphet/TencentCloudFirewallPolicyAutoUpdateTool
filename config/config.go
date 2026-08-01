@@ -88,4 +88,5 @@ type Config struct {
 	LogLevel         string        // debug / info / warn / error
 	WebUIPort        int           // 默认 60200
 	Mode             string        // env / webui / 空=自动
+	SyncEnabled      bool          // 同步开关：true=开启，false=暂停；默认 true
 }

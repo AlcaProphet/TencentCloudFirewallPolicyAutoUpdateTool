@@ -70,7 +70,7 @@ func main() {
 		}
 
 		// 初始化日志（同时输出到 stdout 和 WebUI 日志流）
-		logBroadcaster := webapi.NewLogBroadcaster()
+		logBroadcaster := webapi.NewLogBroadcaster(cfg.LogLevel)
 		app.InitLoggerWithBroadcaster(cfg.LogLevel, logBroadcaster)
 
 		// 启动 WebUI 服务器
@@ -135,13 +135,19 @@ func main() {
 			// 重建 ClientPool 和 Provider 列表
 			newPool := provider.NewClientPool()
 			var newProviders []provider.Provider
+			var failedTargets []string
 			for _, t := range newCfg.Targets {
 				p, err := provider.NewProvider(t, t.ID, newPool)
 				if err != nil {
 					slog.Error("重建 Provider 失败", "target", t.ResourceID, "error", err)
+					failedTargets = append(failedTargets, t.ResourceID)
 					continue
 				}
 				newProviders = append(newProviders, p)
+			}
+			// 失败汇总提示（避免部分目标静默丢失）
+			if len(failedTargets) > 0 {
+				slog.Error("部分目标重建失败", "failed", len(failedTargets), "targets", failedTargets)
 			}
 			s.ReloadProviders(newProviders)
 			s.Reload(newCfg)

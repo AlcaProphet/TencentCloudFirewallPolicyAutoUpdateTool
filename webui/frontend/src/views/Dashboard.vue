@@ -1,37 +1,56 @@
 <script setup lang="ts">
-import { NCard, NStatistic, NGrid, NGi, NButton, NTag, NSpace, NModal, NDataTable } from 'naive-ui'
-import { ref, onMounted, onUnmounted } from 'vue'
+// 仪表盘：同步引擎状态（三态标签）+ 操作（暂停/开启开关、立即同步、运行测试入口）
+// enabled=false 时「立即同步」置灰；暂停/开启走 POST /api/sync/pause|resume（先写 DB 后通知 Syncer）
+import { NCard, NStatistic, NGrid, NGi, NButton, NTag, NSpace, NTooltip, useMessage } from 'naive-ui'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { request } from '../api'
+import type { SyncStatus } from '../types'
 
-const status = ref<any>({ running: false })
-const dryrunResults = ref<any[]>([])
-const showDryrun = ref(false)
+const status = ref<SyncStatus>({ running: false, last_sync: null, enabled: true })
+const switching = ref(false) // 开关请求 loading
+const router = useRouter()
+const message = useMessage()
 let timer: ReturnType<typeof setInterval> | null = null
+
+// 三态标签：enabled=true → 运行中（绿）；enabled=false → 已暂停（橙，引擎仍存活于暂停子循环）；running=false → 已停止
+const engineTag = computed(() => {
+  if (!status.value.running) return { type: 'default' as const, text: '已停止' }
+  return status.value.enabled
+    ? { type: 'success' as const, text: '运行中' }
+    : { type: 'warning' as const, text: '已暂停' }
+})
 
 async function fetchStatus() {
   try {
-    const res = await fetch('/api/sync/status')
-    status.value = await res.json()
-  } catch { /* ignore */ }
+    const s = await request<SyncStatus>('/api/sync/status')
+    status.value = s
+  } catch { /* 轮询失败忽略 */ }
 }
 
 async function triggerSync() {
-  await fetch('/api/sync/trigger', { method: 'POST' })
+  try {
+    await request('/api/sync/trigger', { method: 'POST' })
+    message.success('同步已触发')
+  } catch (e: any) {
+    message.error(`触发失败: ${e.message}`) // 暂停时后端返回 409
+  }
   setTimeout(fetchStatus, 1000)
 }
 
-async function dryRun() {
-  const res = await fetch('/api/sync/dryrun', { method: 'POST' })
-  dryrunResults.value = await res.json() || []
-  showDryrun.value = true
+async function toggleSync() {
+  switching.value = true
+  try {
+    await request(`/api/sync/${status.value.enabled ? 'pause' : 'resume'}`, { method: 'POST' })
+    status.value.enabled = !status.value.enabled
+    message.success(status.value.enabled ? '同步已开启' : '同步已暂停')
+  } catch (e: any) {
+    message.error(`操作失败: ${e.message}`)
+  } finally {
+    switching.value = false
+    fetchStatus()
+  }
 }
-
-const dryrunColumns = [
-  { title: 'Provider', key: 'provider' },
-  { title: '域名', key: 'domain' },
-  { title: '待添加', key: 'to_add' },
-  { title: '待删除', key: 'to_delete' },
-  { title: '错误', key: 'error' },
-]
 
 onMounted(() => {
   fetchStatus()
@@ -50,10 +69,14 @@ onUnmounted(() => {
       <NGi>
         <NCard>
           <NStatistic label="同步引擎">
-            <NTag :type="status.running ? 'success' : 'default'" size="small">
-              {{ status.running ? '运行中' : '已停止' }}
+            <NTag :type="engineTag.type" size="small">
+              {{ engineTag.text }}
             </NTag>
           </NStatistic>
+          <!-- 「运行测试」入口（Dry Run 与连接测试均不受暂停影响） -->
+          <NButton text type="primary" size="small" style="margin-top: 8px" @click="router.push('/run-test')">
+            运行测试 →
+          </NButton>
         </NCard>
       </NGi>
       <NGi>
@@ -64,15 +87,23 @@ onUnmounted(() => {
       <NGi>
         <NCard>
           <NSpace>
-            <NButton type="primary" size="small" @click="triggerSync">立即同步</NButton>
-            <NButton size="small" @click="dryRun">试运行</NButton>
+            <!-- 暂停时「立即同步」置灰 + hover 提示 -->
+            <NTooltip v-if="!status.enabled">
+              <template #trigger>
+                <span>
+                  <NButton type="primary" size="small" disabled>立即同步</NButton>
+                </span>
+              </template>
+              请先开启同步引擎
+            </NTooltip>
+            <NButton v-else type="primary" size="small" @click="triggerSync">立即同步</NButton>
+            <!-- 暂停/开启开关 -->
+            <NButton :type="status.enabled ? 'warning' : 'success'" size="small" :loading="switching" @click="toggleSync">
+              {{ status.enabled ? '暂停' : '开启' }}
+            </NButton>
           </NSpace>
         </NCard>
       </NGi>
     </NGrid>
-
-    <NModal v-model:show="showDryrun" title="试运行结果" preset="card" style="width: 700px">
-      <NDataTable :columns="dryrunColumns" :data="dryrunResults" :bordered="true" size="small" />
-    </NModal>
   </div>
 </template>

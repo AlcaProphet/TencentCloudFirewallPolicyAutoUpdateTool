@@ -591,12 +591,12 @@ func findAvailablePort(preferred int) int {
 
 | 编号 | 问题 | 严重度 | 状态 |
 |------|------|--------|------|
-| [R16-01](#r16-01) | ICMP 规则 Diff 端口归一化不对称，规则永不收敛 | 🔴 高 | ☐ 待修复 |
-| [R16-02](#r16-02) | CVM `GetRules` PolicyIndex fallback 使用 Ingress 数组索引，可能误删 | 🟡 中 | ☐ 待修复 |
-| [R16-03](#r16-03) | `LogBroadcaster.Enabled` 忽略 `log_level` 配置，日志流级别不一致 | 🟡 中 | ☐ 待修复 |
-| [R16-04](#r16-04) | `Run()` 主循环 `s.cfg` 替换无锁，与读取并发存在竞态 | 🟡 中 | ☐ 待修复（方案已入 Build3 Step 2/6） |
-| [R16-05](#r16-05) | `AddSyncLog` 每次写入执行全表清理 DELETE，O(n) | ⚪ 低 | ☐ 待修复 |
-| [R16-06](#r16-06) | `systray_stub.go` 的 `quitCh`/`QuitCh` 无引用（死代码） | ⚪ 低 | ☐ 待修复 |
+| [R16-01](#r16-01) | ICMP 规则 Diff 端口归一化不对称，规则永不收敛 | 🔴 高 | ✅ 已修复 |
+| [R16-02](#r16-02) | CVM `GetRules` PolicyIndex fallback 使用 Ingress 数组索引，可能误删 | 🟡 中 | ✅ 已修复 |
+| [R16-03](#r16-03) | `LogBroadcaster.Enabled` 忽略 `log_level` 配置，日志流级别不一致 | 🟡 中 | ✅ 已修复 |
+| [R16-04](#r16-04) | `Run()` 主循环 `s.cfg` 替换无锁，与读取并发存在竞态 | 🟡 中 | ✅ 已修复（Build3 Step 2/4/8） |
+| [R16-05](#r16-05) | `AddSyncLog` 每次写入执行全表清理 DELETE，O(n) | ⚪ 低 | ✅ 已修复 |
+| [R16-06](#r16-06) | `systray_stub.go` 的 `quitCh`/`QuitCh` 无引用（死代码） | ⚪ 低 | ✅ 已修复 |
 
 ### 6.2 问题详情与改进方案
 
@@ -631,7 +631,7 @@ func findAvailablePort(preferred int) int {
 
 - **严重度：** 🟡 中 | **模块：** `syncer/syncer.go` L78
 - **现象：** 热重载 `s.cfg = newCfg` 直接赋值，与 `syncAll()`/`DryRun()` 并发读取 `s.cfg` 存在数据竞态（`go test -race` 可检出；Build1 时代同样存在，当前 Build3 规划中已识别）
-- **改进方案：** **已纳入 Build3 Step 2（快照 RLock）+ Step 6（替换加锁）**，此处记录问题确认；实施时以 Build3 为准
+- **改进方案：** **已纳入 Build3 Step 2（替换加锁）+ Step 4（快照 RLock）实施完成**：`Run()` 主循环 configCh 分支在 `s.mu` 写锁下替换 `s.cfg`；`DryRun()` 以 `RLock` 快照 `providers/cfg/resolver`；Step 8 主循环改造保持锁结构不变。此处记录问题确认，修复证据见 Build3 Step 2/4/8 验收（`go test -race` 全绿）
 - **验证：** `go test -race ./...`
 - **是否重复：** 部分（Build3 已规划实施，此处作为问题条目记录确认，不另列修复步骤）
 
@@ -657,18 +657,23 @@ func findAvailablePort(preferred int) int {
 
 | 问题 | 已规划位置 |
 |------|-----------|
-| 前端 5 处"失败误报成功"（Targets/Rules/Settings 保存路径） | Build3 Step 1（`api.ts` 统一封装）+ Step 4 |
-| DryRun 无限速 / 无防重入 / 无快照锁 | Build3 Step 2 |
-| 配置导入清空 settings 导致 `sync_enabled` 状态不一致 | Design2 §5.6 / Build3 Step 6 |
-| `INTERVAL` 解析行为不一致（env 报错 vs WebUI 静默） | Build3 Step 11 附项 A |
-| 未知 API 路径返回 HTML（`Handle("/")` 兜底） | Build3 Step 11 附项 B（api.ts 天然免疫） |
-| 热重载 Provider 重建失败静默 continue | Build3 Step 11 附项 C |
-| Settings 页缺 `dns_fail_threshold` 输入框 | Build3 Step 11 附项 D |
-| `s.cfg` 替换无锁竞态（即 R16-04） | Build3 Step 2/6 |
+| 前端 5 处"失败误报成功"（Targets/Rules/Settings 保存路径） | Build3 Step 3（api.ts 统一封装）+ Step 6（页面收敛） |
+| DryRun 无限速 / 无防重入 / 无快照锁 | Build3 Step 4 |
+| 配置导入清空 settings 导致 `sync_enabled` 状态不一致 | Design2 §5.6 / Build3 Step 8（热重载开关同步） |
+| `INTERVAL` 解析行为不一致（env 报错 vs WebUI 静默） | Build3 Step 13 附项 A |
+| 未知 API 路径返回 HTML（`Handle("/")` 兜底） | Build3 Step 13 附项 B（api.ts 天然免疫） |
+| 热重载 Provider 重建失败静默 continue | Build3 Step 13 附项 C |
+| Settings 页缺 `dns_fail_threshold` 输入框 | Build3 Step 13 附项 D |
+| `s.cfg` 替换无锁竞态（即 R16-04） | Build3 Step 2（替换加锁）+ Step 4（快照 RLock） |
 
 ### 6.4 第16轮总结
 
 - **新发现问题：** 6 项（高 1 / 中 3 / 低 2）
-- **R16-01 为最需优先处理项**：ICMP 规则是常见配置（ping 白名单），当前行为虽不破坏规则，但每轮同步产生无效 API 调用与日志噪音，且与 Build3 的 DryRun 明细化联动（明细中 ICMP 恒显示待添加，误导用户）
-- **未改动任何代码**（本次为纯检查记录）
-- **建议处置：** R16-01/02/03 可纳入 Build3 Step 2 一并实施（同为 provider/syncer 层改动）；R16-05/06 作为附项随 Step 11 处理
+- **修复状态：** R16-01~06 全部已修复并验收通过（2026-08-02，随 Build3 Step 1-2 实施）：
+  - R16-01：`provider/common.go` 新增 `normalizePortForCompare`（ICMP/ICMPv6 端口统一按 ALL 比较），`keyOf`/`keyOfAction` 接入；新增 `TestDiff_ICMPPortNormalize`/`TestDiff_ICMPCVM`/`TestDiff_NonICMPUnchanged` 用例全部 PASS
+  - R16-02：`tc_cvm.go` `GetRules` 改为 PolicyIndex 缺失时跳过 + WARN（不再用数组索引兜底）
+  - R16-03：`LogBroadcaster` 增加 level 字段（`NewLogBroadcaster(level string)`），`Enabled` 按级别过滤；`main.go` 传入 `cfg.LogLevel`
+  - R16-04：cfg 替换加锁（Step 2）+ DryRun RLock 快照（Step 4）+ 主循环改造保持锁结构（Step 8）；`go test -race` 全绿
+  - R16-05：`AddSyncLog` 仅当行数 > 1000 时执行清理；验证 1100 条写入后行数 ≤ 1000
+  - R16-06：删除 `systray_stub.go` 的 `quitCh`/`QuitCh`（保留 `RunSystray` 空实现与构建标签配对）
+- **R16-01 为最需优先处理项**：ICMP 规则是常见配置（ping 白名单），当前行为虽不破坏规则，但每轮同步产生无效 API 调用与日志噪音，且与 Build3 的 DryRun 明细化联动（明细中 ICMP 恒显示待添加，误导用户）——已随归一化修复消除

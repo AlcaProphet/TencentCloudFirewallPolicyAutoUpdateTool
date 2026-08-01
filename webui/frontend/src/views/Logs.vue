@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { NDataTable, NTag, NCollapse, NCollapseItem } from 'naive-ui'
 import { ref, onMounted, onUnmounted, h } from 'vue'
+import { request } from '../api'
+import type { SyncLogEntry } from '../types'
 
-const logs = ref<any[]>([])
+const logs = ref<SyncLogEntry[]>([])
 const events = ref<any[]>([])
 const logLines = ref<string[]>([])
 let es: EventSource | null = null
@@ -54,8 +56,12 @@ function formatEventData(row: any): string {
 
 // ─── 生命周期 ───
 onMounted(async () => {
-  const res = await fetch('/api/sync/logs')
-  logs.value = await res.json() || []
+  try {
+    logs.value = await request<SyncLogEntry[]>('/api/sync/logs')
+  } catch (e: any) {
+    // 历史日志加载失败不阻塞 SSE 展示
+    console.warn('加载同步日志失败:', e.message)
+  }
 
   // SSE 实时事件推送
   es = new EventSource('/api/sync/events')

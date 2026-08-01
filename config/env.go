@@ -32,6 +32,7 @@ func ParseEnv(content string) (*Config, error) {
 		DNSTimeout:       10 * time.Second,
 		DNSFailThreshold: 5,
 		WebUIPort:        60200,
+		SyncEnabled:      true, // 默认开启
 		TCAccessID:       kv["TC_ACCESS_ID"],
 		TCAccessKey:      kv["TC_ACCESS_KEY"],
 		AliAccessID:      kv["ALI_ACCESS_ID"],
@@ -68,6 +69,10 @@ func ParseEnv(content string) (*Config, error) {
 		cfg.Interval = d
 	} else {
 		cfg.Interval = 5 * time.Minute
+	}
+	// 解析同步开关（非法值按 false 处理，与 `v == "true"` 语义一致）
+	if v := kv["SYNC_ENABLED"]; v != "" {
+		cfg.SyncEnabled = v == "true"
 	}
 	// 解析 TARGETS
 	if v := kv["TARGETS"]; v != "" {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -21,8 +22,40 @@ func (d *Deps) handleSyncTrigger(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "同步引擎未启动，请先配置目标和规则")
 		return
 	}
+	if !d.Syncer.Status().Enabled {
+		writeError(w, http.StatusConflict, "同步已暂停，请先开启")
+		return
+	}
 	d.Syncer.TriggerSync()
 	writeJSON(w, http.StatusAccepted, map[string]string{"message": "同步已触发"})
+}
+
+// handleSyncPause 暂停同步：先写 DB 后通知 Syncer（即使通知失败，持久化状态已正确写入）
+func (d *Deps) handleSyncPause(w http.ResponseWriter, r *http.Request) {
+	if d.Syncer == nil {
+		writeError(w, http.StatusBadRequest, "同步引擎未启动")
+		return
+	}
+	if err := d.Store.SetSetting("sync_enabled", "false"); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	d.Syncer.Pause()
+	writeJSON(w, http.StatusOK, map[string]string{"message": "同步已暂停"})
+}
+
+// handleSyncResume 恢复同步：先写 DB 后通知 Syncer
+func (d *Deps) handleSyncResume(w http.ResponseWriter, r *http.Request) {
+	if d.Syncer == nil {
+		writeError(w, http.StatusBadRequest, "同步引擎未启动")
+		return
+	}
+	if err := d.Store.SetSetting("sync_enabled", "true"); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	d.Syncer.Resume()
+	writeJSON(w, http.StatusOK, map[string]string{"message": "同步已恢复"})
 }
 
 func (d *Deps) handleSyncDryRun(w http.ResponseWriter, r *http.Request) {
@@ -30,12 +63,16 @@ func (d *Deps) handleSyncDryRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "同步引擎未启动，请先配置目标和规则")
 		return
 	}
-	results, err := d.Syncer.DryRun()
+	resp, err := d.Syncer.DryRun()
 	if err != nil {
+		if errors.Is(err, syncer.ErrDryRunInProgress) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, results)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleSyncEvents SSE 实时事件推送

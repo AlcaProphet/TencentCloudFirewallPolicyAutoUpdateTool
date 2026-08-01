@@ -1,22 +1,37 @@
 <script setup lang="ts">
 import { NForm, NFormItem, NInput, NSelect, NButton, NSpace, useMessage } from 'naive-ui'
 import { ref, onMounted } from 'vue'
+import { request } from '../api'
 
 const settings = ref<Record<string, string>>({})
 const message = useMessage()
 
+// 间隔格式校验（如 30s、5m、1h、500ms），保存前拦截非法值
+const intervalPattern = /^\d+(ms|s|m|h)$/
+
 onMounted(async () => {
-  const res = await fetch('/api/settings')
-  settings.value = await res.json() || {}
+  try {
+    settings.value = await request<Record<string, string>>('/api/settings')
+  } catch (e: any) {
+    message.error(`加载设置失败: ${e.message}`)
+  }
 })
 
 async function save() {
-  await fetch('/api/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings.value),
-  })
-  message.success('保存成功')
+  if (!intervalPattern.test(String(settings.value.interval || ''))) {
+    message.error('同步间隔格式无效，示例：30s / 5m / 1h')
+    return
+  }
+  try {
+    await request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings.value),
+    })
+    message.success('保存成功')
+  } catch (e: any) {
+    message.error(`保存失败: ${e.message}`) // 修复：非 2xx 不再误报成功
+  }
 }
 
 function exportConfig() {
@@ -73,13 +88,16 @@ async function importConfig(e: Event) {
         <NInput v-model:value="settings.tag" />
       </NFormItem>
       <NFormItem label="同步间隔">
-        <NInput v-model:value="settings.interval" />
+        <NInput v-model:value="settings.interval" placeholder="5m（30s / 5m / 1h）" />
       </NFormItem>
       <NFormItem label="DNS 服务器">
         <NInput v-model:value="settings.dns" />
       </NFormItem>
       <NFormItem label="DNS 超时">
         <NInput v-model:value="settings.dns_timeout" placeholder="10s" />
+      </NFormItem>
+      <NFormItem label="DNS 失败阈值">
+        <NInput v-model:value="settings.dns_fail_threshold" placeholder="5" />
       </NFormItem>
       <NFormItem label="日志级别">
         <NSelect v-model:value="settings.log_level" :options="[

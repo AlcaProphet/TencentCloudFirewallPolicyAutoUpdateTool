@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/alcaprophet/fwalizer/config"
 	"github.com/alcaprophet/fwalizer/provider"
@@ -86,6 +87,15 @@ func (d *Deps) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 	settings, err := d.Store.GetSettings()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "读取凭据失败")
+		return
+	}
+	// 凭据空值快速失败：避免暴露 SDK 原始报错
+	if strings.HasPrefix(req.CloudType, "tc_") && (settings["tc_access_id"] == "" || settings["tc_access_key"] == "") {
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "腾讯云凭据未配置，请先在全局设置中填写"})
+		return
+	}
+	if strings.HasPrefix(req.CloudType, "ali_") && (settings["ali_access_id"] == "" || settings["ali_access_key"] == "") {
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "阿里云凭据未配置，请先在全局设置中填写"})
 		return
 	}
 	provider.SetCredentials(
