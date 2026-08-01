@@ -1,8 +1,7 @@
-# FWAlizer 问题追踪（Issue3 · 历史归档）
+# FWAlizer 问题追踪（Issue3）
 
-> 第13轮审查及全量复核（2026-07-27），以 Design1.md、Build2.md、AGENTS.md 为基准。
-> **全部 4 项问题已修复/实施完毕，最终验收通过。**
-> 历史问题见 [Issue1.md](./Issue1.md) 和 [Issue2.md](./Issue2.md)（均已归档），构建计划见 [Build2.md](./Build2.md)（已归档）。
+> 第13-16轮审查记录。第13-15轮（2026-07-27）已全部修复/验收通过；第16轮（2026-08-02）为结合 [Design2.md](./Design2.md)、[Build3.md](./Build3.md) 的全面代码检查，见 [六、第16轮](#六第16轮全面代码检查2026-08-02)。
+> 历史问题见 [Issue1.md](./Issue1.md) 和 [Issue2.md](./Issue2.md)（均已归档），历史构建计划见 [Build2.md](./Build2.md)（已归档）。
 
 ---
 
@@ -580,3 +579,96 @@ func findAvailablePort(preferred int) int {
 - **编译/测试：** 全部通过 ✅
 - **API 合规性：** 四个 Provider 均符合官方文档 ✅
 - **设计一致性：** 全部检查项通过 ✅
+
+---
+
+## 六、第16轮全面代码检查（2026-08-02）
+
+> 审查范围：全量代码逐文件审查（Go 源码 42 个文件 + 前端 12 个文件 + 测试 + CI/构建配置），结合 [Design2.md](./Design2.md)（设计构想）与 [Build3.md](./Build3.md)（当前构建方案），**不重复记录**已归档问题（R13/R14/R15）及已纳入 Build3 的改进项（见 §三对照表）。
+> 审查方式：逐文件阅读 + 与 Build3/Design2 规划对照 + 逻辑推演（不做过度防御性检查）。
+
+### 6.1 发现的问题
+
+| 编号 | 问题 | 严重度 | 状态 |
+|------|------|--------|------|
+| [R16-01](#r16-01) | ICMP 规则 Diff 端口归一化不对称，规则永不收敛 | 🔴 高 | ☐ 待修复 |
+| [R16-02](#r16-02) | CVM `GetRules` PolicyIndex fallback 使用 Ingress 数组索引，可能误删 | 🟡 中 | ☐ 待修复 |
+| [R16-03](#r16-03) | `LogBroadcaster.Enabled` 忽略 `log_level` 配置，日志流级别不一致 | 🟡 中 | ☐ 待修复 |
+| [R16-04](#r16-04) | `Run()` 主循环 `s.cfg` 替换无锁，与读取并发存在竞态 | 🟡 中 | ☐ 待修复（方案已入 Build3 Step 2/6） |
+| [R16-05](#r16-05) | `AddSyncLog` 每次写入执行全表清理 DELETE，O(n) | ⚪ 低 | ☐ 待修复 |
+| [R16-06](#r16-06) | `systray_stub.go` 的 `quitCh`/`QuitCh` 无引用（死代码） | ⚪ 低 | ☐ 待修复 |
+
+### 6.2 问题详情与改进方案
+
+#### [R16-01] ICMP 规则 Diff 端口归一化不对称（规则永不收敛）
+
+- **严重度：** 🔴 高 | **模块：** `provider/common.go`（`keyOf`/`keyOfAction`）、`provider/ali_swas.go`、`provider/ali_ecs.go`、`syncer/syncer.go`（`buildDesired` 链路）
+- **现象：**
+  - **期望侧（desired）**：ICMP 规则经 `ConvertPorts("ALL")` 后端口为**云厂商格式**——阿里云 SWAS/ECS 为 `-1/-1`，CVM 为 `ALL`（Lighthouse 为 `ALL`）
+  - **现有侧（existing）**：`GetRules` 经 `normalizeSWASPort`/`normalizeECSPort` 归一化为 `ALL`（`-1/-1` → `ALL`）
+  - `Diff` 的 `ruleKey` 按端口精确比较：`-1/-1` ≠ `ALL` → **ICMP 规则每轮同步都被判定为 toAdd**，反复走幂等创建路径（重复 API 调用 + "规则已存在" WARN 噪音 + toAdd 统计恒为 +1），规则实际不重复创建但永不收敛；CVM（desired `ALL` vs 云端空串）与 Lighthouse 同样存在两端不一致风险
+- **改进方案：** 在 `keyOf`/`keyOfAction` 端口比较前归一化：当协议为 `ICMP`/`ICMPv6` 时，端口统一按 `ALL` 参与比较（`-1/-1`、`ALL`、空串三者等价）；两端对称，不改动 API 请求格式
+- **验证：** `provider/common_test.go` 新增 ICMP 规则 Diff 无变更用例（desired `-1/-1` 对 existing `ALL` 应为空 diff）
+- **是否重复：** 否（R13-R15 未覆盖；Build3 未覆盖）
+
+#### [R16-02] CVM `GetRules` PolicyIndex fallback 使用 Ingress 数组索引
+
+- **严重度：** 🟡 中 | **模块：** `provider/tc_cvm.go` L88
+- **现象：** `PolicyIndex: strconv.Itoa(i)` 以 **Ingress 数组索引**兜底，而 CVM 的 PolicyIndex 是安全组**全方向全局索引**（Ingress+Egress 共用编号空间）。主路径（API 返回 `r.PolicyIndex`）正确，但若 SDK 某版本不填充该字段，删除时将按错误索引定位，**可能误删 Egress 规则或无关规则**
+- **改进方案：** fallback 分支改为**跳过 + WARN**（无 PolicyIndex 的规则不构造删除请求），绝不使用数组索引代替
+- **验证：** 构造无 PolicyIndex 的 `RuleInfo`，`DeleteRules` 跳过并 WARN；`go test -race`
+- **是否重复：** 否（R14-08 为规则计数 fallback 误报关闭，与本问题不同）
+
+#### [R16-03] `LogBroadcaster.Enabled` 忽略 `log_level` 配置
+
+- **严重度：** 🟡 中 | **模块：** `webui/api/logstream.go` L48-50
+- **现象：** `Enabled` 恒返回 `level >= slog.LevelDebug`——**WebUI 日志流始终显示 debug 级日志**，与 stdout（按 `cfg.LogLevel` 过滤）级别不一致；`log_level=info` 时 WebUI 日志流仍显示 debug 噪音
+- **改进方案：** `LogBroadcaster` 增加级别字段（构造时传入，或复用 `InitLoggerWithBroadcaster` 的 level 参数），`Enabled` 按该级别过滤
+- **验证：** `LOG_LEVEL=info` 启动后 WebUI 日志流不含 debug 日志
+- **是否重复：** 否
+
+#### [R16-04] `Run()` 主循环 `s.cfg` 替换无锁
+
+- **严重度：** 🟡 中 | **模块：** `syncer/syncer.go` L78
+- **现象：** 热重载 `s.cfg = newCfg` 直接赋值，与 `syncAll()`/`DryRun()` 并发读取 `s.cfg` 存在数据竞态（`go test -race` 可检出；Build1 时代同样存在，当前 Build3 规划中已识别）
+- **改进方案：** **已纳入 Build3 Step 2（快照 RLock）+ Step 6（替换加锁）**，此处记录问题确认；实施时以 Build3 为准
+- **验证：** `go test -race ./...`
+- **是否重复：** 部分（Build3 已规划实施，此处作为问题条目记录确认，不另列修复步骤）
+
+#### [R16-05] `AddSyncLog` 每次写入执行全表清理
+
+- **严重度：** ⚪ 低 | **模块：** `config/store.go` L445-447
+- **现象：** 每次插入同步日志后立即执行 `DELETE ... WHERE id NOT IN (SELECT id ... LIMIT 1000)` 全表扫描，日志量大时 O(n) 开销
+- **改进方案：** 仅当表行数 > 1000 时执行清理（先 `SELECT COUNT`），或采用周期批量清理
+- **验证：** 功能回归 + 插入日志后行数 ≤ 1000
+- **是否重复：** 否
+
+#### [R16-06] `systray_stub.go` 死代码
+
+- **严重度：** ⚪ 低 | **模块：** `app/systray_stub.go`
+- **现象：** 桌面端搁置后 `main.go` 不再引用 `QuitCh()`，包级 `quitCh` 与 `QuitCh` 成为无引用死代码（不影响编译）
+- **改进方案：** 删除 `quitCh`/`QuitCh`，保留 `RunSystray` 空实现（保持 `desktop` 标签配对）；或加注释说明为桌面端预留
+- **验证：** `go build ./...`
+- **是否重复：** 否
+
+### 6.3 已规划项对照（不重复记录）
+
+> 以下问题已在 Design2/Build3 中有明确修复计划，第16轮确认存在但**不重复记录**：
+
+| 问题 | 已规划位置 |
+|------|-----------|
+| 前端 5 处"失败误报成功"（Targets/Rules/Settings 保存路径） | Build3 Step 1（`api.ts` 统一封装）+ Step 4 |
+| DryRun 无限速 / 无防重入 / 无快照锁 | Build3 Step 2 |
+| 配置导入清空 settings 导致 `sync_enabled` 状态不一致 | Design2 §5.6 / Build3 Step 6 |
+| `INTERVAL` 解析行为不一致（env 报错 vs WebUI 静默） | Build3 Step 11 附项 A |
+| 未知 API 路径返回 HTML（`Handle("/")` 兜底） | Build3 Step 11 附项 B（api.ts 天然免疫） |
+| 热重载 Provider 重建失败静默 continue | Build3 Step 11 附项 C |
+| Settings 页缺 `dns_fail_threshold` 输入框 | Build3 Step 11 附项 D |
+| `s.cfg` 替换无锁竞态（即 R16-04） | Build3 Step 2/6 |
+
+### 6.4 第16轮总结
+
+- **新发现问题：** 6 项（高 1 / 中 3 / 低 2）
+- **R16-01 为最需优先处理项**：ICMP 规则是常见配置（ping 白名单），当前行为虽不破坏规则，但每轮同步产生无效 API 调用与日志噪音，且与 Build3 的 DryRun 明细化联动（明细中 ICMP 恒显示待添加，误导用户）
+- **未改动任何代码**（本次为纯检查记录）
+- **建议处置：** R16-01/02/03 可纳入 Build3 Step 2 一并实施（同为 provider/syncer 层改动）；R16-05/06 作为附项随 Step 11 处理
