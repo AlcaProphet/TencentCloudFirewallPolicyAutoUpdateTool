@@ -1,21 +1,20 @@
 name: Docker Build & Publish
 
 on:
-  # 推送 tag 时自动构建并发布镜像
   push:
     tags:
       - 'v*'
-  # PR 时仅编译检查，不推送
   pull_request:
     branches:
       - main
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # 包名固定为 fwalizer（与 AGENTS.md §十 镜像命名一致）；owner 动态取自仓库，fork 后仍可用
+  IMAGE_NAME: ${{ github.repository_owner }}/fwalizer
 
 jobs:
-  build:
+  docker:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,14 +29,29 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: 更新 SDK 到最新版
+      - name: 更新所有 SDK 到最新版
         run: |
           go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common
           go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lighthouse
+          go get -u github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc
+          go get -u github.com/alibabacloud-go/swas-open-20200601/v3
+          go get -u github.com/alibabacloud-go/ecs-20140526/v7
+          go get -u github.com/alibabacloud-go/darabonba-openapi/v2
+          go get -u github.com/aliyun/credentials-go
           go mod tidy
 
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 构建前端
+        run: cd webui/frontend && npm ci && npm run build
+
       - name: 编译检查
-        run: go build -v ./...
+        run: |
+          go build -v ./...
+          go vet ./...
 
       - name: 运行测试
         run: go test -v ./...
@@ -66,10 +80,15 @@ jobs:
 
       - name: 构建并推送 Docker 镜像
         uses: docker/build-push-action@v5
+        env:
+          BUILD_VERSION: ${{ github.ref_name }}
         with:
           context: .
+          file: build/Dockerfile
           push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
           platforms: linux/amd64
+          build-args: |
+            VERSION=${{ env.BUILD_VERSION }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

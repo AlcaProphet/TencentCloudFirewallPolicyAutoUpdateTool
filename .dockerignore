@@ -1,7 +1,7 @@
+Documents/
+*.md
 .env
-.git
+.git/
 Dockerfile
 .dockerignore
 Makefile
-*.md
-Ref/

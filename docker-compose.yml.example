@@ -1,0 +1,72 @@
+# FWAlizer Docker Compose 示例
+# 复制此文件为 docker-compose.yml 并根据需要修改
+
+services:
+  fwalizer:
+    # 使用预构建镜像（推荐）
+    image: ghcr.io/alcaprophet/fwalizer:latest
+    # 或本地构建：
+    # build:
+    #   context: .
+    #   dockerfile: build/Dockerfile
+    #   args:
+    #     VERSION: local
+
+    container_name: fwalizer
+
+    # ---- 环境变量 ----
+    environment:
+      # 数据目录路径（可选，默认按平台自动选择）
+      # 在 Docker 中建议显式指定，避免依赖 HOME 目录
+      - FWALIZER_DATA_DIR=/app/data
+
+      # 同步间隔（可选，默认 5m）
+      - INTERVAL=5m
+
+      # 同步全局开关（可选，默认 true；false 时启动不执行同步）
+      # - SYNC_ENABLED=true
+
+      # 自定义 DNS 服务器（可选，默认 223.5.5.5）
+      # - DNS=223.5.5.5
+
+      # WebUI 端口（可选，默认 60200）
+      - WEBUI_PORT=60200
+
+      # 日志级别（可选，默认 info）
+      - LOG_LEVEL=info
+
+    # ---- 端口映射 ----
+    # WebUI 模式：暴露 WebUI 端口（绑定 127.0.0.1，仅本机访问）
+    ports:
+      - "60200:60200"
+
+    # ---- 卷挂载 ----
+    volumes:
+      # 数据持久化（SQLite 数据库存储于此）
+      - fwalizer_data:/app/data
+
+      # .env 模式：挂载配置文件（二选一，与上方 ports 互斥）
+      # - ./config/.env:/app/.env:ro
+
+    # ---- 健康检查 ----
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://localhost:60200/api/health 2>/dev/null || pgrep fwalizer || exit 1",
+        ]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+    # ---- 重启策略 ----
+    restart: unless-stopped
+
+    # ---- 运行模式说明 ----
+    # 默认启动为 WebUI 模式（无 .env 文件时自动检测）
+    # 如需 .env 模式，取消注释 volumes 中的 .env 挂载并注释 ports
+
+volumes:
+  fwalizer_data:
+    driver: local

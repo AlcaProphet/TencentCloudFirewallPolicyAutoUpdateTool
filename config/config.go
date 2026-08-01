@@ -1,178 +1,92 @@
 package config
 
-import (
-	"fmt"
-	"net"
-	"os"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
+import "time"
+
+// CloudType 云产品类型
+type CloudType string
+
+const (
+	CloudTCLighthouse CloudType = "tc_lighthouse"
+	CloudTCCVM       CloudType = "tc_cvm"
+	CloudAliSWAS     CloudType = "ali_swas"
+	CloudAliECS      CloudType = "ali_ecs"
 )
 
-// MaxFirewallRuleDescriptionBytes 腾讯云 API 对 FirewallRuleDescription 的字节数上限
-const MaxFirewallRuleDescriptionBytes = 64
+// RuleInfo 云端查询回来的规则
+type RuleInfo struct {
+	Protocol      string // TCP / UDP / TCP+UDP / ICMP / ICMPv6 / ALL
+	Port          string // 归一化为 "port" 或 "start-end" 或 "ALL"
+	CidrBlock     string // IPv4 CIDR，如 "1.2.3.4/32"
+	Ipv6CidrBlock string // IPv6 CIDR，如 "2001:db8::1/128"
+	Action        string // ACCEPT / DROP
+	Description   string // 规则描述/备注
+	PolicyIndex   string // CVM 安全组删除时需要
+	RuleID        string // 阿里云 SWAS/ECS 删除时需要
+}
 
-// DomainRule 单条域名规则
+// RuleAction 要写入云端的规则
+type RuleAction struct {
+	Protocol      string
+	Port          string // 已转换为对应云厂商的端口格式
+	CidrBlock     string
+	Ipv6CidrBlock string
+	Action        string
+	Description   string
+}
+
+// TargetConfig 云资源目标配置
+type TargetConfig struct {
+	ID         int       `json:"id"`
+	CloudType  CloudType `json:"cloud_type"`
+	Region     string    `json:"region"`
+	ResourceID string    `json:"resource_id"` // InstanceId 或 SecurityGroupId
+}
+
+// DomainRule 域名规则配置（RULES 解析结果）
 type DomainRule struct {
-	Host     string // 域名，如 api.example.com
-	Protocol string // TCP / UDP / TCP+UDP
-	Ports    string // 逗号分隔端口号 或 ALL
-	Action   string // ACCEPT / DROP
-	Comment  string // 可选备注，用于 FirewallRuleDescription
+	ID         int    `json:"id"`
+	Host       string `json:"host"`
+	Protocol   string `json:"protocol"`    // TCP / UDP / TCP+UDP / ICMP
+	Ports      string `json:"ports"`       // 单端口、逗号分隔、范围、ALL
+	Action     string `json:"action"`      // ACCEPT / DROP
+	Targets    []int  `json:"targets"`     // 目标编号（空 = 全部）
+	Comment    string `json:"comment"`
+	EnableIPv6 bool   `json:"enable_ipv6"` // 是否解析 AAAA 记录，默认 false
 }
 
-// Config 应用配置
+// AlertEmailConfig SMTP 邮件告警配置
+type AlertEmailConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	FromAddr string `json:"from_addr"`
+	ToAddr   string `json:"to_addr"`
+}
+
+// AlertWebhookConfig Webhook 告警配置
+type AlertWebhookConfig struct {
+	Enabled bool   `json:"enabled"`
+	URL     string `json:"url"`
+	Channel string `json:"channel"` // dingtalk / feishu / slack，默认 dingtalk
+}
+
+// Config 全局配置
 type Config struct {
-	SecretID    string
-	SecretKey   string
-	InstanceID  string
-	Region      string
-	DomainRules []DomainRule
-	RuleTag     string
-	Interval    time.Duration
-	DNSServer   string
-}
-
-// Load 从环境变量加载并校验配置
-func Load() (*Config, error) {
-	cfg := &Config{
-		SecretID:   strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_ID")),
-		SecretKey:  strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_KEY")),
-		InstanceID: strings.TrimSpace(os.Getenv("LIGHTHOUSE_INSTANCE_ID")),
-		Region:     strings.TrimSpace(os.Getenv("LIGHTHOUSE_REGION")),
-		RuleTag:    getEnv("RULE_TAG", "auto-dns"),
-		DNSServer:  getEnv("DNS_SERVER", "8.8.8.8:53"),
-	}
-
-	// 校验必填项
-	if cfg.SecretID == "" || cfg.SecretKey == "" {
-		return nil, fmt.Errorf("TENCENTCLOUD_SECRET_ID 和 TENCENTCLOUD_SECRET_KEY 为必填项")
-	}
-	if cfg.InstanceID == "" {
-		return nil, fmt.Errorf("LIGHTHOUSE_INSTANCE_ID 为必填项")
-	}
-	if !strings.HasPrefix(cfg.InstanceID, "lhins-") {
-		return nil, fmt.Errorf("LIGHTHOUSE_INSTANCE_ID 格式错误，应以 lhins- 开头，实际: %s", cfg.InstanceID)
-	}
-	if cfg.Region == "" {
-		return nil, fmt.Errorf("LIGHTHOUSE_REGION 为必填项")
-	}
-
-	// 校验 RULE_TAG：仅允许字母、数字、连字符、下划线
-	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, cfg.RuleTag); !matched {
-		return nil, fmt.Errorf("RULE_TAG 包含非法字符（仅允许字母、数字、-、_），实际: %s", cfg.RuleTag)
-	}
-
-	// 校验 DNS_SERVER 格式
-	if _, _, err := net.SplitHostPort(cfg.DNSServer); err != nil {
-		return nil, fmt.Errorf("DNS_SERVER 格式错误（应为 host:port），实际: %s: %w", cfg.DNSServer, err)
-	}
-
-	// 解析 DOMAIN_RULES
-	rulesRaw := strings.TrimSpace(os.Getenv("DOMAIN_RULES"))
-	if rulesRaw == "" {
-		return nil, fmt.Errorf("DOMAIN_RULES 为必填项")
-	}
-	rules, err := parseDomainRules(rulesRaw)
-	if err != nil {
-		return nil, fmt.Errorf("DOMAIN_RULES 解析失败: %w", err)
-	}
-	cfg.DomainRules = rules
-
-	// 解析检查间隔
-	intervalRaw := getEnv("CHECK_INTERVAL", "5m")
-	interval, err := time.ParseDuration(intervalRaw)
-	if err != nil {
-		return nil, fmt.Errorf("CHECK_INTERVAL 解析失败: %w", err)
-	}
-	if interval < 10*time.Second {
-		return nil, fmt.Errorf("CHECK_INTERVAL 不能小于 10s（API 频率保护）")
-	}
-	cfg.Interval = interval
-
-	return cfg, nil
-}
-
-// RuleDescription 生成规则描述标识
-// 格式: [RULE_TAG]
-func (c *Config) RuleDescription() string {
-	return fmt.Sprintf("[%s]", c.RuleTag)
-}
-
-// getEnv 读取环境变量，带默认值（自动去除首尾空白）
-func getEnv(key, defaultVal string) string {
-	if val := os.Getenv(key); strings.TrimSpace(val) != "" {
-		return strings.TrimSpace(val)
-	}
-	return defaultVal
-}
-
-// parseDomainRules 解析 "host|proto|ports|action[|comment];..." 格式
-func parseDomainRules(raw string) ([]DomainRule, error) {
-	segments := strings.Split(raw, ";")
-	var rules []DomainRule
-
-	for i, seg := range segments {
-		seg = strings.TrimSpace(seg)
-		if seg == "" {
-			continue
-		}
-
-		parts := strings.SplitN(seg, "|", 5)
-		if len(parts) < 4 {
-			return nil, fmt.Errorf("第 %d 条规则格式错误，期望 host|protocol|ports|action[|comment]，实际: %s", i+1, seg)
-		}
-
-		comment := ""
-		if len(parts) >= 5 {
-			comment = strings.TrimSpace(parts[4])
-		}
-
-		rule := DomainRule{
-			Host:     strings.TrimSpace(parts[0]),
-			Protocol: strings.TrimSpace(parts[1]),
-			Ports:    strings.TrimSpace(parts[2]),
-			Action:   strings.TrimSpace(parts[3]),
-			Comment:  comment,
-		}
-
-		// 校验 hostname
-		if rule.Host == "" {
-			return nil, fmt.Errorf("第 %d 条规则 hostname 不能为空", i+1)
-		}
-
-		// 校验 protocol
-		switch rule.Protocol {
-		case "TCP", "UDP", "TCP+UDP":
-		default:
-			return nil, fmt.Errorf("第 %d 条规则协议不合法: %s（仅支持 TCP/UDP/TCP+UDP）", i+1, rule.Protocol)
-		}
-
-		// 校验 action
-		switch rule.Action {
-		case "ACCEPT", "DROP":
-		default:
-			return nil, fmt.Errorf("第 %d 条规则动作不合法: %s（仅支持 ACCEPT/DROP）", i+1, rule.Action)
-		}
-
-		// 校验端口号（ALL 表示全部端口，遵循腾讯云 API 规范）
-		if rule.Ports != "ALL" {
-			for _, portStr := range strings.Split(rule.Ports, ",") {
-				portStr = strings.TrimSpace(portStr)
-				port, err := strconv.Atoi(portStr)
-				if err != nil || port < 1 || port > 65535 {
-					return nil, fmt.Errorf("第 %d 条规则端口不合法: %s（应为 1-65535 或 ALL）", i+1, portStr)
-				}
-			}
-		}
-
-		rules = append(rules, rule)
-	}
-
-	if len(rules) == 0 {
-		return nil, fmt.Errorf("DOMAIN_RULES 至少需要一条规则")
-	}
-
-	return rules, nil
+	TCAccessID       string
+	TCAccessKey      string
+	AliAccessID      string
+	AliAccessKey     string
+	Targets          []TargetConfig
+	DomainRules      []DomainRule
+	Tag              string
+	Interval         time.Duration
+	DNS              string
+	DNSTimeout       time.Duration // 默认 10s
+	DNSFailThreshold int           // 默认 5
+	LogLevel         string        // debug / info / warn / error
+	WebUIPort        int           // 默认 60200
+	Mode             string        // env / webui / 空=自动
+	SyncEnabled      bool          // 同步开关：true=开启，false=暂停；默认 true
 }

@@ -1,0 +1,115 @@
+package notifier
+
+import (
+	"log/slog"
+	"sync"
+	"time"
+)
+
+// EventType 事件类型
+type EventType string
+
+const (
+	EventSyncStart          EventType = "sync:start"
+	EventSyncComplete       EventType = "sync:complete"        // 全局：一轮同步完成
+	EventDomainSyncComplete EventType = "domain:sync_complete" // 逐域名：单个域名同步成功
+	EventSyncError          EventType = "sync:error"
+	EventRuleChanged        EventType = "rule:changed"
+	EventDNSFailed          EventType = "dns:failed"
+)
+
+// Event 事件
+type Event struct {
+	Type      EventType      `json:"type"`
+	Timestamp time.Time      `json:"timestamp"`
+	Data      map[string]any `json:"data"`
+}
+
+// Subscriber 事件订阅者接口
+type Subscriber interface {
+	OnEvent(event Event) error
+}
+
+// EventBus 事件总线
+type EventBus struct {
+	mu          sync.RWMutex
+	subscribers map[EventType][]Subscriber
+	chanSubs    map[int]chan Event // channel 订阅者（用于 SSE）
+	nextID      int
+}
+
+// NewEventBus 创建事件总线
+func NewEventBus() *EventBus {
+	return &EventBus{
+		subscribers: make(map[EventType][]Subscriber),
+		chanSubs:    make(map[int]chan Event),
+	}
+}
+
+// Subscribe 订阅事件（接口方式）
+func (b *EventBus) Subscribe(eventType EventType, sub Subscriber) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.subscribers[eventType] = append(b.subscribers[eventType], sub)
+}
+
+// Unsubscribe 取消订阅。sub 必须与 Subscribe 时传入的为同一实例，否则无法匹配。
+// 若 sub 未找到（已取消或从未订阅），无操作（幂等）。
+func (b *EventBus) Unsubscribe(eventType EventType, sub Subscriber) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	subs := b.subscribers[eventType]
+	for i, s := range subs {
+		if s == sub {
+			b.subscribers[eventType] = append(subs[:i], subs[i+1:]...)
+			return
+		}
+	}
+	// 未找到 — 幂等，不报错
+}
+
+// SubscribeChan 订阅所有事件（channel 方式，用于 SSE 推送）
+// 返回事件 channel 和取消订阅函数
+func (b *EventBus) SubscribeChan() (<-chan Event, func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	id := b.nextID
+	b.nextID++
+	ch := make(chan Event, 32)
+	b.chanSubs[id] = ch
+	return ch, func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if c, ok := b.chanSubs[id]; ok {
+			close(c)
+			delete(b.chanSubs, id)
+		}
+	}
+}
+
+// Publish 异步投递，不阻塞调用方
+func (b *EventBus) Publish(event Event) {
+	b.mu.RLock()
+	subs := b.subscribers[event.Type]
+	chanSubs := make([]chan Event, 0, len(b.chanSubs))
+	for _, ch := range b.chanSubs {
+		chanSubs = append(chanSubs, ch)
+	}
+	b.mu.RUnlock()
+
+	for _, sub := range subs {
+		go func(s Subscriber) {
+			if err := s.OnEvent(event); err != nil {
+				slog.Warn("事件处理失败", "type", event.Type, "error", err)
+			}
+		}(sub)
+	}
+	// channel 订阅者：非阻塞发送，满则跳过
+	for _, ch := range chanSubs {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
+}

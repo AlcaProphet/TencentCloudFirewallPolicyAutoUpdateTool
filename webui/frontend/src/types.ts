@@ -1,0 +1,87 @@
+// API 响应类型定义
+
+export interface TargetConfig {
+  id: number
+  cloud_type: string
+  region: string
+  resource_id: string
+}
+
+export interface DomainRule {
+  id: number
+  host: string
+  protocol: string
+  ports: string
+  action: string
+  targets: number[]
+  comment: string
+  enable_ipv6: boolean
+}
+
+export interface SyncStatus {
+  running: boolean
+  last_sync: string | null
+  enabled: boolean // 同步开关（Step 11 起后端必返回）
+}
+
+// RuleChange 规则变更摘要（Dry Run 明细化）
+export interface RuleChange {
+  protocol: string
+  port: string
+  action: string
+  cidr: string // IPv4 或 IPv6 的 CIDR
+  desc: string // 规则描述（含 [TAG]）
+}
+
+// DryRunResult 试运行结果（to_add/to_delete 为规则明细数组）
+export interface DryRunResult {
+  provider: string
+  domain: string
+  to_add: RuleChange[]
+  to_delete: RuleChange[]
+  error?: string
+}
+
+// DryRunResponse Dry Run 响应包装（空状态语义化）
+export interface DryRunResponse {
+  results: DryRunResult[]
+  warnings: string[]
+}
+
+// TestConnectionResult 连接测试结果
+export interface TestConnectionResult {
+  success: boolean
+  message?: string
+  error?: string
+}
+
+export interface SyncLogEntry {
+  timestamp: string
+  target: string
+  domain: string
+  result: string
+  added: number
+  deleted: number
+}
+
+export interface SyncEvent {
+  type: string
+  timestamp: string
+  data: Record<string, unknown>
+}
+
+export interface AlertEmailConfig {
+  enabled: boolean
+  host: string
+  port: string
+  username: string
+  password: string
+  from_addr: string
+  to_addr: string
+}
+
+export interface AlertWebhookConfig {
+  enabled: boolean
+  url: string
+  channel?: string
+}

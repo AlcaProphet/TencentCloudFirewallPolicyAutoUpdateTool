@@ -1,42 +1,24 @@
-.PHONY: build run docker-build docker-run clean test
+VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X github.com/alcaprophet/fwalizer/version.Version=$(VERSION)
 
-# ─── 本地开发 ───
+.PHONY: build test vet clean docker-build all frontend
 
-# 编译
-build:
-	go build -ldflags="-s -w" -o fwalizer .
+frontend:
+	cd webui/frontend && npm ci && npm run build
 
-# 本地运行（需要先创建 .env 文件）
-run: build
-	./fwalizer
+build: frontend
+	go build -ldflags="$(LDFLAGS)" -o fwalizer .
 
-# 运行测试
 test:
-	go test -v -race ./...
+	go test ./... -v
 
-# 代码检查
-lint:
+vet:
 	go vet ./...
 
-# ─── Docker ───
-
-DOCKER_IMAGE ?= fwalizer
-
-docker-build:
-	docker build -t $(DOCKER_IMAGE) .
-
-docker-run: docker-build
-	docker run -d --env-file .env --name fwalizer --restart=always $(DOCKER_IMAGE)
-
-docker-stop:
-	docker stop fwalizer || true
-	docker rm fwalizer || true
-
-docker-logs:
-	docker logs -f fwalizer
-
-# ─── 清理 ───
 clean:
 	rm -f fwalizer
-	docker stop fwalizer 2>/dev/null || true
-	docker rm fwalizer 2>/dev/null || true
+
+docker-build:
+	docker build -f build/Dockerfile --build-arg VERSION=$(VERSION) -t fwalizer .
+
+all: vet test build
