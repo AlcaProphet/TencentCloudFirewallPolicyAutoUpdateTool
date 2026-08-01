@@ -42,24 +42,32 @@ async function importConfig(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  const text = await file.text()
+  // 先解析 JSON（独立 try/catch：格式错误与请求错误提示分离）
+  let data: any
   try {
-    const data = JSON.parse(text)
-    const res = await fetch('/api/config/import', {
+    data = JSON.parse(await file.text())
+  } catch {
+    message.error('JSON 格式错误')
+    input.value = ''
+    return
+  }
+  try {
+    await request('/api/config/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    const result = await res.json()
-    if (res.ok) {
-      message.success('导入成功')
-      const s = await fetch('/api/settings')
-      settings.value = await s.json() || {}
-    } else {
-      message.error(result.error || '导入失败')
-    }
-  } catch {
-    message.error('JSON 格式错误')
+    message.success('导入成功')
+  } catch (err: any) {
+    message.error(`导入失败: ${err.message}`) // RequestError 携带后端 error 信息
+    input.value = ''
+    return
+  }
+  // 导入成功后刷新设置表单（失败不影响导入结果）
+  try {
+    settings.value = await request<Record<string, string>>('/api/settings')
+  } catch (err: any) {
+    message.error(`导入成功，但刷新设置失败: ${err.message}`)
   }
   input.value = ''
 }
