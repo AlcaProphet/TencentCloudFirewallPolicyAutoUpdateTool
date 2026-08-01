@@ -1,6 +1,14 @@
-# Design2.md — 同步全局开关功能设计
+# Design2.md — 同步全局开关与运行测试页设计
 
-> 本文档描述「同步全局开关」功能的完整设计方案，涵盖需求分析、存储方案、核心机制、API 设计、WebUI 交互、兼容性分析及风险评估。所有决策以 [Design1.md](./Design1.md) 架构设计为依据，编码约束遵循 [AGENTS.md](./AGENTS.md)。
+> 本文档描述「同步全局开关」「运行测试页（Dry Run + 连接测试）」「页面收敛（高级功能页拆分）」的完整设计方案，涵盖需求分析、存储方案、核心机制、API 设计、WebUI 交互、兼容性分析及风险评估。所有决策以 [Design1.md](./Design1.md) 架构设计为依据，编码约束遵循 [AGENTS.md](./AGENTS.md)。
+>
+> **版本说明（本版整合）**：在原「同步全局开关」设计基础上，整合 Dry Run 与连接测试功能升级方案——原分布于仪表盘（`Dashboard.vue` 试运行按钮）、高级功能（`Advanced.vue` Dry Run 标签页、连接测试标签页、配置导入导出标签页）的功能统一收敛：
+>
+> - **运行测试页（`/run-test`）**：合并仪表盘「试运行」与高级功能「Dry Run」「连接测试」为单一页面，内部以 `NTabs` 拆分「Dry Run」「连接测试」两个子标签页；
+> - **Dry Run 明细化**：`POST /api/sync/dryrun` 响应结构破坏性变更——`to_add`/`to_delete` 由计数 `int` 改为 `RuleChange[]` 数组（方案 A），一次请求返回全部明细，响应包装为 `{results, warnings}` 支持语义化空状态；展示采用「目标 → 域名 → 规则」三级分组视图；
+> - **连接测试增强**：前端 15s 超时（`AbortController`）+ 后端凭据空值快速失败提示；
+> - **页面收敛**：高级功能页（`/advanced`）三个标签页全部迁出——Dry Run 与连接测试 → 运行测试页，配置导入导出 → 全局设置页（设置页已内置同功能按钮，删除高级功能页重复实现后以设置页为准），**高级功能页删除**；
+> - 同时纳入前端共享逻辑抽离、交互完善（loading/错误处理/防连点）、Dry Run 并发安全（限速、防重入、快照锁）等改进要点，并为全局开关的仪表盘联动预留（`SyncStatus.enabled` 可选字段）。
 
 ---
 
@@ -8,7 +16,26 @@
 
 ### 1.1 功能定义
 
+**功能一：同步全局开关**
+
 为 FWAlizer 增加一个**可持久化状态的同步全局开关**，允许用户按需开启或暂停自动同步。开关状态持久化到 SQLite（WebUI 模式）或环境变量（`.env` 模式），应用重启后自动恢复。
+
+**功能二：运行测试页**
+
+将 Dry Run（试运行）与连接测试从仪表盘、高级功能页中独立出来，作为**单一入口的「运行测试」页面**（路由 `/run-test`，菜单「运行测试」），定位为正式的测试诊断工具，页内以 `NTabs` 提供两个子标签页：
+
+- **Tab 1：Dry Run** —— 结果**逐条规则级明细**（返回每个目标/域名待添加、待删除的具体规则：协议、端口、动作、CIDR、描述），而非仅计数；**一次请求返回全部明细**，不设独立明细端点；展示采用**「目标 → 域名 → 规则」三级分组视图**；空状态语义化（无目标、无规则时返回可解释的 warnings）；暂停状态下始终可用（与全局开关解耦，见 9.1）。
+- **Tab 2：连接测试** —— 由高级功能页迁入，保留现有表单形态与错误语义（业务失败返回 HTTP 200 + `success:false`）；新增 15s 前端超时与后端凭据空值快速失败提示；与 Dry Run 一致，**暂停状态下可用**（端点不依赖 Syncer）。
+
+**功能三：页面收敛（高级功能页拆分）**
+
+高级功能页（`/advanced`）原有三个标签页全部迁出后删除：
+
+| 原标签页 | 去向 |
+|---------|------|
+| Dry Run | → 运行测试页 Tab 1 |
+| 连接测试 | → 运行测试页 Tab 2 |
+| 配置导入/导出 | → 全局设置页（设置页表单末尾保存行**已内置**「导出配置」「导入配置」按钮，见 8.6） |
 
 ### 1.2 核心需求
 
@@ -19,10 +46,24 @@
 | **优雅暂停** | 暂停时若正在执行同步，等待当前轮次完成后再进入暂停状态 |
 | **即时恢复** | 开启后立即恢复定时同步（等待下一个 ticker 周期，或用户手动触发） |
 | **双模式兼容** | WebUI 模式通过 SQLite + API 控制；`.env` 模式通过环境变量控制 |
+| **运行测试独立页** | 合并仪表盘「试运行」、高级功能「Dry Run」「连接测试」为单一「运行测试」页（双子标签） |
+| **明细化预览** | Dry Run 返回逐条规则级明细（`to_add`/`to_delete` 为规则数组），支撑「先验证再执行」闭环 |
+| **暂停可用** | 暂停状态下 Dry Run 与连接测试均始终可用（均不依赖 Syncer 主循环） |
+| **交互完备** | 运行测试页具备 loading、错误提示、防连点、空状态、超时提示等完整交互 |
+| **页面收敛** | 高级功能页删除；配置导入导出由全局设置页统一承载 |
 
 ### 1.3 设计动机
 
-当前 FWAlizer 启动后 `Syncer.Run()` 立即执行 `syncAll()`（[syncer.go](syncer/syncer.go#L67)），无任何缓冲机制。用户首次配置或维护时缺乏「先验证再执行」的安全窗口。虽然 Dry Run 提供了预览能力，但缺乏在源头阻止写入的手段。
+当前 FWAlizer 启动后 `Syncer.Run()` 立即执行 `syncAll()`（[syncer.go](syncer/syncer.go#L67)），无任何缓冲机制。用户首次配置或维护时缺乏「先验证再执行」的安全窗口。虽然 Dry Run 提供了预览能力，但缺乏在源头阻止写入的手段。（此为全局开关的动机，保留原文）
+
+Dry Run 与测试功能的升级动机（本次整合）：
+
+1. **三处入口分散且体验不对等**：仪表盘「试运行」`dryRun()`、高级功能「Dry Run」`runDryRun()` 调用同一端点 `POST /api/sync/dryrun`、同一 handler、底层复用同一份 `Syncer.DryRun()`，差异仅在前端展示层；仪表盘版无 loading、无错误处理，高级功能版不检查 `res.ok`（后端 400/500 的 `{"error":...}` 会被当结果渲染，且误报成功）。连接测试位于高级功能页第三个标签，与 Dry Run 同属"测试"心智模型，分散在不同入口。
+2. **结果仅计数、明细被丢弃**：`provider.Diff` 已算出完整明细（`DiffResult{ToAdd []RuleAction, ToDelete []RuleInfo}`），`Syncer.DryRun()` 只取 `len()`，用户只能看到"加 3 条、删 1 条"，无法确认具体规则；与 `Design1.md` 12.9「返回 toAdd 和 toDelete 规则列表」的文档描述不一致。
+3. **Dry Run 无限速、无防重入、有竞态**：`syncAll()` 每域名间有 `rateLimitInterval` 限速，`DryRun()` 循环无限速（频繁点击会冲击云 API 配额）；无防重入（可并发多次执行）；遍历 `s.providers`/`s.cfg` 无读锁，与热重载并发存在数据竞态。
+4. **Dry Run 空状态无语义**：无目标或无规则时返回 `[]`，用户无法区分"没配置"与"无变更"。
+5. **配置导入导出重复实现**：`Settings.vue` 保存行与 `Advanced.vue` 配置标签页均实现了「导出配置」「导入配置」（同一对端点），重复维护。
+6. **连接测试边界缺陷**：`GET/POST` 云 API 无超时控制（云厂商 API 卡住时前端 loading 无限转圈）；凭据未配置时直接暴露 SDK 原始报错，提示不友好。
 
 ---
 
@@ -53,7 +94,7 @@ for {
 
 核心约束：`Stop()` 调用 `close(stopCh)` 是终态的，一个 Syncer 实例只能运行一次。
 
-### 2.2 现有对外接口
+### 2.2 现有对外接口与缺陷
 
 [webui/api/deps.go](webui/api/deps.go#L12-L17) 暴露的 Syncer 接口：
 
@@ -66,6 +107,28 @@ type Syncer interface {
 ```
 
 当前无 `Pause()` / `Resume()` / `SetEnabled()` 方法。
+
+**DryRun 现状缺陷清单**（升级设计依据）：
+
+| 缺陷 | 位置 | 说明 |
+|------|------|------|
+| 明细丢弃 | [syncer.go](syncer/syncer.go#L183-L184) | `result.ToAdd = len(diff.ToAdd)`，仅保留计数 |
+| 无限速 | [syncer.go](syncer/syncer.go#L156-L189) | 循环内无 `rateLimitInterval`（对比 `syncAll()` 的 L214） |
+| 无防重入 | `DryRun()` | 可并发多次执行，重复消耗云 API 配额 |
+| 数据竞态 | `DryRun()` 遍历 | 读取 `s.providers`/`s.cfg` 无读锁，与 `ReloadProviders()`/`Reload()` 并发不安全 |
+| 空状态无语义 | 返回 `[]` | 无目标/无规则时用户无法区分原因 |
+
+**连接测试现状**（[targets.go](webui/api/targets.go#L78-L120)）：
+
+| 维度 | 现状 |
+|------|------|
+| 端点 | `POST /api/test-connection`，请求体 `{cloud_type, region, resource_id}` |
+| 流程 | 解析请求 → `Store.GetSettings()` 读凭据 → `provider.SetCredentials()` → 临时 `NewProvider()` → `GetRules()` → 成功 `{success:true, message:"连接成功，当前 N 条规则"}` |
+| 错误语义 | **业务失败返回 HTTP 200 + `{success:false, error}`**（与 Dry Run 的 4xx/5xx + `{error}` 语义不同，迁移时保留各自语义） |
+| 依赖 | 不依赖 `d.Syncer`，与暂停状态无关（暂停时可用） |
+| 缺陷 | 无超时控制（云 API 卡住时前端 loading 无限转圈）；凭据未配置时直接暴露 SDK 原始报错 |
+
+**配置导入导出现状**：`Settings.vue`（保存行按钮）与 `Advanced.vue`（配置标签页）重复实现同一对端点（`GET /api/config/export`、`POST /api/config/import`）；`Settings.vue` 版导入成功后会刷新设置表单（[Settings.vue](webui/frontend/src/views/Settings.vue#L41-L42)），`Advanced.vue` 版不刷新——**以设置页实现为准，删除高级功能页重复实现**。
 
 ### 2.3 热重载链路
 
@@ -190,6 +253,7 @@ type Syncer struct {
 | `configCh` | 更新配置 + Reset ticker | 仅更新配置 |
 | `stopCh` | 优雅退出 | 优雅退出 |
 | `DryRun()` | 正常 | **正常**（独立于主循环） |
+| `POST /api/test-connection` | 正常 | **正常**（不依赖 Syncer） |
 
 ### 5.3 公开方法
 
@@ -274,9 +338,11 @@ POST /api/sync/resume
 
 | 端点 | 改动 |
 |------|------|
-| `GET /api/sync/status` | `SyncStatus` 新增 `enabled bool` 字段 |
+| `GET /api/sync/status` | `SyncStatus` 新增 `enabled bool` 字段（后端落地后返回；前端 `types.ts` 以可选字段 `enabled?: boolean` 兼容过渡，未返回时默认 true——B5 预留） |
 | `POST /api/sync/trigger` | 暂停时返回 HTTP `409 Conflict` + `{"error":"同步已暂停，请先开启"}` |
-| `POST /api/sync/dryrun` | **无需改动** — 始终可用 |
+| `POST /api/sync/dryrun` | **响应结构升级**（明细化 + 包装对象，详见 6.6）；执行中重复请求返回 `409 {"error":"Dry Run 正在执行中"}`（防重入）；**不检查暂停状态，始终可用** |
+| `POST /api/test-connection` | **端点与错误语义不变**（200 + `success:false`）；新增凭据空值快速失败提示（详见 6.7） |
+| `GET /api/config/export`、`POST /api/config/import` | **无需改动**（前端入口收敛到全局设置页） |
 
 ### 6.4 Syncer 接口扩展
 
@@ -301,6 +367,70 @@ type SyncStatus struct {
     Running  bool       `json:"running"`
     Enabled  bool       `json:"enabled"`    // 新增
     LastSync *time.Time `json:"last_sync"`
+}
+```
+
+### 6.6 Dry Run API 响应结构设计（升级）
+
+#### 响应包装：空状态语义化（推荐方案，已采纳）
+
+响应从裸数组改为包装对象：
+
+```json
+{
+  "results": [ ... ],
+  "warnings": [ "暂无云资源目标" ]
+}
+```
+
+- `results`：明细数组（见下）；
+- `warnings`：非致命提示数组——`providers` 为空时输出 `"暂无云资源目标，请先在云资源管理页配置"`；`DomainRules` 为空时输出 `"暂无域名规则，请先在域名规则页配置"`；二者都为空时输出两条；
+- 单个目标/域名的失败仍落在对应 `result.error` 字段（`omitempty`），不进入 warnings。
+
+#### `DryRunResult` 明细化（方案 A：字段类型变更）
+
+**决策：`to_add`/`to_delete` 由 `number` 直接改为 `RuleChange[]`（破坏性变更）。项目仍处于构建期，不考虑旧版兼容，前端消费方本次统一改造。**
+
+```go
+// RuleChange 规则变更摘要（供前端直接渲染）
+type RuleChange struct {
+    Protocol string `json:"protocol"`
+    Port     string `json:"port"`
+    Action   string `json:"action"`
+    Cidr     string `json:"cidr"` // IPv4 或 IPv6 的 CIDR（如 1.2.3.4/32）
+    Desc     string `json:"desc"` // 规则描述（含 [TAG]）
+}
+
+// DryRunResult 试运行结果（升级后）
+type DryRunResult struct {
+    Provider string       `json:"provider"`
+    Domain   string       `json:"domain"`
+    ToAdd    []RuleChange `json:"to_add"`    // 待添加规则明细
+    ToDelete []RuleChange `json:"to_delete"` // 待删除规则明细
+    Error    string       `json:"error,omitempty"`
+}
+```
+
+#### 服务端实现要点
+
+- `provider/common.go` 新增 `RuleChange` 摘要构造函数（从 `config.RuleAction`/`config.RuleInfo` 转换，`Cidr` 取 `CidrBlock`/`Ipv6CidrBlock` 非空者）；
+- `syncer.DryRun()` 填充数组（`diff.ToAdd` → `ToAdd`，`diff.ToDelete` → `ToDelete`），计数由前端 `length` 计算；
+- **一次返回全部明细**：不新增独立明细端点（单台服务器少量 IP 场景下明细量小；仅将来支持多目标大量规则时再考虑拆分）；
+- `handleSyncDryRun` 在 Syncer 为 nil 时返回 `400`，执行失败返回 `500`，执行中返回 `409`。
+
+### 6.7 连接测试端点增强（本次整合新增）
+
+端点、请求体、错误语义（200 + `success:false`）均不变，仅新增**凭据空值快速失败**，避免凭据未配置时暴露 SDK 原始报错：
+
+```go
+// handleTestConnection 中 SetCredentials 之前插入（[targets.go](webui/api/targets.go#L78) 内 +4 行）
+if strings.HasPrefix(req.CloudType, "tc_") && (settings["tc_access_id"] == "" || settings["tc_access_key"] == "") {
+    writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "腾讯云凭据未配置，请先在全局设置中填写"})
+    return
+}
+if strings.HasPrefix(req.CloudType, "ali_") && (settings["ali_access_id"] == "" || settings["ali_access_key"] == "") {
+    writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "阿里云凭据未配置，请先在全局设置中填写"})
+    return
 }
 ```
 
@@ -356,7 +486,11 @@ if cfg.SyncEnabled {
 
 仪表盘是同步引擎状态的主展示页，已有「同步引擎」状态标签和操作按钮。开关放在此处最符合用户心智模型。
 
-**布局调整**：
+**布局调整（本次整合更新）**：
+
+- **移除**「试运行」按钮（`dryRun()` 函数与 `NModal` 弹窗一并删除），Dry Run 由独立「运行测试」页统一承载；
+- 「运行测试」入口以次级链接形式放在「同步引擎」状态卡片内；
+- 操作卡片保留「立即同步」，新增「暂停/开启」开关按钮。
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -364,8 +498,8 @@ if cfg.SyncEnabled {
 │  ┌───────────┐ ┌───────────┐ ┌────────────────┐  │
 │  │ 同步引擎   │ │ 上次同步   │ │   操作          │  │
 │  │ ● 运行中   │ │ 2026-...  │ │ [立即同步]      │  │
-│  │            │ │           │ │ [试运行]        │  │
-│  │ [⏸ 暂停]  │ │           │ │                 │  │
+│  │            │ │           │ │ [暂停/开启]     │  │
+│  │ [运行测试] │ │           │ │                 │  │
 │  └───────────┘ └───────────┘ └────────────────┘  │
 └──────────────────────────────────────────────────┘
 ```
@@ -378,34 +512,121 @@ if cfg.SyncEnabled {
 | 开启 + 同步中 | `running: true` | 蓝色 (info) | 同步中 |
 | 关闭 | `running: false` | 橙色 (warning) | 已暂停 |
 
-### 8.3 按钮状态联动
+### 8.3 按钮状态联动（本次整合更新）
 
-| 开关 | 「立即同步」按钮 | 「试运行」按钮 | 暂停/开启按钮 |
-|------|----------------|-------------|-------------|
-| 开启 | 可用 | 可用 | 显示「暂停」 |
-| 关闭 | **置灰（disabled）** | 可用 | 显示「开启」 |
+| 开关 | 「立即同步」按钮 | 「运行测试」入口 | 暂停/开启按钮 |
+|------|----------------|----------------|-------------|
+| 开启 | 可用 | 可用（跳转 `/run-test`） | 显示「暂停」 |
+| 关闭 | **置灰（disabled）** | 可用（Dry Run 与连接测试均不受暂停影响） | 显示「开启」 |
 
 「立即同步」按钮置灰时，hover 提示"请先开启同步引擎"。
 
+**B5 预留**：`types.ts` 的 `SyncStatus` 预置可选字段 `enabled?: boolean`（后端未返回时默认 `true`）；Dashboard 操作区渲染以 `status.enabled === false` 为条件数据驱动，全局开关落地时仅需新增开关组件与 pause/resume API 调用，Dry Run 链路零改动。
+
 ### 8.4 建议不放在 Settings 页
 
-虽然 `sync_enabled` 是一个配置，但它本质是**运行时控制**而非静态配置。放在 Dashboard 可让用户一眼看到当前状态并即时操作。Settings 页更适合「改完保存、下次生效」的配置项。
+虽然 `sync_enabled` 是一个配置，但它本质是**运行时控制**而非静态配置。放在 Dashboard 可让用户一眼看到当前状态并即时操作。Settings 页更适合「改完保存、下次生效」的配置项。（配置导入/导出属静态配置，按 8.6 收敛到 Settings 页，与本节不冲突。）
+
+### 8.5 「运行测试」页（Dry Run + 连接测试，本次整合新增）
+
+#### 定位
+
+- 合并原仪表盘「试运行」弹窗、高级功能「Dry Run」与「连接测试」标签页，作为 Dry Run 与连接测试的**唯一入口**，定位为正式测试诊断工具：结果常驻页面、可反复执行、有完整的 loading/成功/失败反馈；
+- 页内以 `NTabs` 提供两个子标签页：**Tab 1「Dry Run」**、**Tab 2「连接测试」**；
+- 标签页激活状态与路由 query 同步（`?tab=dryrun|connection`），刷新/分享可保留位置；
+- 路由 `/run-test`，菜单「运行测试」（位于「同步日志」与「告警配置」之间——高级功能页删除后相邻项更新）。
+
+#### Tab 1：Dry Run（三级分组视图：目标 → 域名 → 规则）
+
+```
+运行测试 → Tab 1：Dry Run
+├── 操作区
+│   ├── [执行 Dry Run] 按钮（loading 态，执行中禁用）
+│   ├── 上次执行时间（lastRunAt，未执行为空）
+│   └── 统计条：目标数 / 待添加总数 / 待删除总数 / 错误数
+├── 结果区（三级分组）
+│   └── 目标卡片（Provider，如 腾讯云轻量云 · ap-guangzhou · lhins-xxx）
+│       └── 域名列表（rule.Host）
+│           ├── 待添加规则明细表（列：协议 / 端口 / 动作 / CIDR / 描述）
+│           └── 待删除规则明细表（列同上）
+│       （result.error 非空的目标/域名显示错误行，不展开明细）
+└── 空状态（按优先级展示）
+    ├── 未执行：显示"尚未执行 Dry Run"
+    ├── warnings 非空：按 warnings 文案展示（暂无云资源目标 / 暂无域名规则）
+    ├── 执行后 results 为空且无 warnings："无待变更规则"
+    └── 请求失败：message.error + 结果区错误提示
+```
+
+#### Tab 2：连接测试（由高级功能页迁入）
+
+```
+运行测试 → Tab 2：连接测试
+├── 表单区：云类型选择（NSelect，4 云）+ 地域（NInput）+ 资源 ID（NInput）
+├── [测试连接] 按钮（loading 态，执行中禁用，防连点）
+└── 结果区：页面内文本展示
+    ├── 成功：data.message（如"连接成功，当前 5 条规则"）
+    ├── 业务失败：data.error（200 + success:false 语义，保留现有分支）
+    ├── 凭据空值：后端快速失败提示（"腾讯云/阿里云凭据未配置，请先在全局设置中填写"）
+    └── 超时：前端 AbortController 15s → "连接超时（15 秒），请检查网络或云 API 状态"
+```
+
+**连接测试交互规范**：
+
+| 项目 | 规范 |
+|------|------|
+| 请求 | `POST /api/test-connection`，请求体 `{cloud_type, region, resource_id}` |
+| 错误语义 | **沿用现有** `data.success ? data.message : data.error`（200 + `success:false` 是既有约定，不与 Dry Run 的 4xx/5xx 语义强行统一） |
+| 超时（增强 1） | `AbortController` + 15s；`AbortError` 单独分支显示超时文案；`finally` 中 `clearTimeout` |
+| 凭据提示（增强 2） | 后端 `targets.go` 凭据空值快速失败（6.7），前端直接展示 `data.error` |
+| 表单状态 | 迁移后保留 `testForm`/`testLoading`/`cloudOptions`（4 云）原样 |
+| 实现形态 | **内嵌 `RunTest.vue`**（约 40 行，纯表单 + 结果文本，无共享状态），不抽 composable（符合简单轻量化；若未来复杂化再抽） |
+
+#### 前端实现拆分
+
+| 模块 | 说明 |
+|------|------|
+| `composables/useDryRun.ts`（新增） | Dry Run 共享组合逻辑：`loading` / `results` / `warnings` / `error` / `lastRunAt` / `run()`（含响应检查与解析失败处理） |
+| `components/DryRunResults.vue`（新增） | Dry Run 三级分组视图渲染组件（目标卡片 → 域名 → 规则明细表），含空状态分支 |
+| `views/RunTest.vue`（新增） | 页面骨架：`NTabs`（Tab 1 Dry Run 引用上述组件；Tab 2 连接测试表单内嵌） |
+| `views/Dashboard.vue`（修改） | 删除 `dryRun()`、`dryrunResults`、`showDryrun`、`dryrunColumns`、`NModal`；新增「运行测试」链接与开关联动（8.1/8.3） |
+| `views/Advanced.vue`（删除） | 三个标签页全部迁出后删除（见 8.7） |
+| `views/Settings.vue`（修改，极小） | 保留现有「导出配置」「导入配置」按钮（已满足收敛目标）；按需微调文案 |
+| `main.ts` / `App.vue`（修改） | 新增路由 `/run-test` 与菜单「运行测试」；**删除路由 `/advanced` 与菜单「高级功能」** |
+
+### 8.6 配置导入/导出收敛至全局设置页（本次整合新增）
+
+**关键事实**：`Settings.vue` 表单末尾的保存行**已内置**「导出配置」「导入配置」按钮（[Settings.vue](webui/frontend/src/views/Settings.vue#L92-L101)），且导入成功后自动刷新设置表单（L41-L42）；`Advanced.vue` 配置标签页是对同一对端点的**重复实现**（且导入后不刷新表单）。
+
+**方案**：不新增区块——**保留设置页现有按钮行作为唯一入口**（恰在表单末尾，即"整合进全局设置的末尾"），删除 `Advanced.vue` 的配置导入/导出标签页及 `exportConfig`/`handleImport` 重复实现。可选微调：按钮行下增加一行说明文案（"导入会覆盖当前配置"）。
+
+**预期收益**：消除重复实现；导入/导出与设置表单同页，导入后即时刷新所见即所得。
+
+### 8.7 高级功能页删除（本次整合新增）
+
+高级功能页三个标签页全部迁出后页面为空，**删除 `/advanced` 页面**：
+
+| 步骤 | 内容 |
+|------|------|
+| 1 | `Advanced.vue` 文件删除 |
+| 2 | `main.ts` 删除路由 `{ path: '/advanced', ... }` |
+| 3 | `App.vue` 菜单删除「高级功能」项 |
+| 4 | 既有导航跳转引用（如有）一并清理 |
 
 ---
 
 ## 九、兼容性分析
 
-### 9.1 Dry Run
+### 9.1 Dry Run（本次整合改写）
 
-**完全兼容，无需改动。**
+**暂停兼容（不变）**：`POST /api/sync/dryrun` 不检查暂停状态，始终可用。`DryRun()` 是独立方法，不经过 `Run()` 主循环，直接访问 `s.providers` 和 `s.cfg.DomainRules`，这两个字段在 Syncer 创建后就始终可用。使用场景契合：**先暂停 → 配置规则 → Dry Run 预览 → 确认无误 → 开启同步**。
 
-[DryRun()](syncer/syncer.go#L156-L189) 是独立方法，不经过 `Run()` 主循环，不检查暂停状态。它直接访问 `s.providers` 和 `s.cfg.DomainRules`，这两个字段在 Syncer 创建后就始终可用。
+**响应结构破坏性变更（本次新增，已决策接受）**：`to_add`/`to_delete` 由 `number` 改为 `RuleChange[]`，响应由裸数组改为 `{results, warnings}` 包装对象。项目仍处于构建期，不考虑旧版兼容；前端消费方本次统一改造。
 
-使用场景契合：**先暂停 → 配置规则 → Dry Run 预览 → 确认无误 → 开启同步**。
+**前端入口合并（本次新增）**：仪表盘「试运行」与高级功能「Dry Run」标签页移除，由「运行测试」页 Tab 1 统一承载；原两处交互缺陷（无 loading、不检查 `res.ok`、误报成功）随合并一并修复。
 
 ### 9.2 热重载
 
-**完全兼容。**
+**完全兼容（并新增快照语义）**。
 
 热重载通过 `configCh` 传递新配置。正常运行时和暂停等待时均正确响应：
 
@@ -414,11 +635,13 @@ if cfg.SyncEnabled {
 
 `ReloadProviders()` 通过直接赋值 `s.providers` 实现，不经过 channel，暂停状态下同样生效。用户可在暂停期间修改 Targets，Dry Run 能立即反映最新配置。
 
+**Dry Run 执行期间热重载（本次新增约定）**：`DryRun()` 开始时在 `s.mu.RLock()` 保护下对 `s.providers`（切片引用）与 `s.cfg`（快照）各做一次快照，整个遍历使用快照；期间发生的重载不影响本次结果，下次 Dry Run 生效。同时消除与 `ReloadProviders()`/`Reload()` 并发遍历的数据竞态。
+
 ### 9.3 事件总线（EventBus）
 
 **不需要改造。**
 
-暂停/恢复本身不产生 EventBus 事件（保持简洁）。同步过程中的事件（`EventSyncStart`、`EventDomainSyncComplete`、`EventSyncError`、`EventDNSFailed`）仅在 `syncAll()` 实际执行时产生。暂停期间无同步轮次，自然不会产生这些事件。
+暂停/恢复本身不产生 EventBus 事件（保持简洁）。同步过程中的事件（`EventSyncStart`、`EventDomainSyncComplete`、`EventSyncError`、`EventDNSFailed`）仅在 `syncAll()` 实际执行时产生。暂停期间无同步轮次，自然不会产生这些事件。Dry Run 同样不触发事件（现有行为不变）。
 
 ### 9.4 同步日志（StoreLogWriter）
 
@@ -429,6 +652,16 @@ if cfg.SyncEnabled {
 ### 9.5 告警通知
 
 暂停期间 DNS 解析和云 API 调用都不会发生（`syncAll()` 被门控阻止），不会产生误报告警。
+
+### 9.6 连接测试与配置导入导出（本次整合新增）
+
+| 项 | 兼容性结论 |
+|----|-----------|
+| `POST /api/test-connection` | 端点、请求体、错误语义（200 + `success:false`）**全部不变**；仅新增凭据空值快速失败分支（对正常流程无影响） |
+| 连接测试暂停可用 | 端点不依赖 `d.Syncer`，暂停状态下可用（与 Dry Run 一致） |
+| 连接测试超时 | 纯前端增强（AbortController），后端无感知 |
+| `GET /api/config/export`、`POST /api/config/import` | 端点不变；前端入口从高级功能页收敛到全局设置页（设置页本就具备，删除重复实现） |
+| 高级功能页删除 | 纯前端页面收敛；`/advanced` 路由与菜单移除，不影响任何 API |
 
 ---
 
@@ -468,6 +701,8 @@ if cfg.SyncEnabled {
          下次启动 → 从 DB/ENV 读取 SyncEnabled → 决定初始状态
 ```
 
+（暂停状态下「运行测试」页的 Dry Run 与连接测试均可用——二者不依赖 `Run()` 主循环。）
+
 ---
 
 ## 十一、风险评估
@@ -479,6 +714,14 @@ if cfg.SyncEnabled {
 | 停止信号在暂停子循环中到达 | 🟢 低 | `waitForResume()` 需同时监听 `stopCh`，返回后外层 `Run()` 退出 | 与现有优雅退出行为一致 |
 | 暂停期间热重载触发意外同步 | 🟢 低 | `waitForResume()` 中 `configCh` 仅更新配置，不触发 `syncAll()` | — |
 | `.env` 模式 `syncEnabled=false` 时 `WaitForSignal` 死锁 | 🟡 中 | `s.Run()` 未启动 → `doneCh` 永不关闭 | `WaitForSignal()` 需特殊处理：直接监听信号，不等待 `doneCh` |
+| DryRun 响应结构破坏性变更 | 🟢 低 | `to_add`/`to_delete` 改为数组 + 响应包装化 | 项目处于构建期不考虑旧版兼容；前端消费方同步改造 |
+| DryRun 重复点击并发执行 | 🟡 中 | 连点可并发多次 DryRun | 前端 loading 禁用 + 后端 `TryLock()` 防重入（409） |
+| DryRun 无限制冲击云 API | 🟡 中 | 循环无限速，频繁执行可触发云厂商频率限制 | `DryRun()` 内复用 `rateLimitInterval(ct)` 加入间隔 |
+| DryRun 与热重载并发竞态 | 🟡 中 | 遍历 `s.providers`/`s.cfg` 无读锁 | 开始前快照 + `RLock` 保护（见 9.2） |
+| 连接测试无超时（云 API 卡住） | 🟡 中 | loading 无限转圈，无任何反馈 | 前端 `AbortController` 15s 超时 + 超时文案（见 8.5 Tab 2） |
+| 连接测试凭据空值提示不友好 | 🟢 低 | 直接暴露 SDK 原始报错 | 后端凭据空值快速失败（见 6.7） |
+| 高级功能页删除遗漏引用 | 🟢 低 | 路由/菜单/跳转引用残留 | 按 8.7 清单逐步核对；WebUI 内部工具，影响面小 |
+| 三级分组视图明细渲染性能 | 🟢 低 | 单台服务器少量 IP 场景，明细量小 | 一次请求返回全部明细；分组在前端内存组织 |
 | 现有单元测试受影响 | 🟢 低 | 项目测试覆盖主要在 resolver/portconv/tag，Syncer 本身几乎无测试 | — |
 
 ---
@@ -486,6 +729,27 @@ if cfg.SyncEnabled {
 ## 十二、实施计划
 
 ### 12.1 改动文件清单
+
+**Dry Run 与测试功能升级（Phase 0，不依赖全局开关）：**
+
+| 文件 | 改动量 | 说明 |
+|------|--------|------|
+| `syncer/syncer.go` | ~40 行 | `DryRunResult` 明细化 + `DryRun()` 限速/快照锁/防重入标志 |
+| `provider/common.go` | ~20 行 | `RuleChange` 摘要构造函数 |
+| `webui/api/sync.go` | ~20 行 | `handleSyncDryRun` 响应包装 `{results, warnings}` + 409 防重入分支 |
+| `webui/api/targets.go` | +4 行 | 连接测试凭据空值快速失败（见 6.7） |
+| `webui/api/deps.go` | 0~3 行 | 无需改（或按接口调整） |
+| `webui/frontend/src/types.ts` | ~20 行 | `DryRunResult`/`RuleChange` 更新 + `SyncStatus.enabled?` 可选字段 + 响应包装类型 + `TestConnectionResult`（可选） |
+| `webui/frontend/src/composables/useDryRun.ts` | 新增 | Dry Run 共享组合逻辑（loading/results/warnings/error/lastRunAt/run()） |
+| `webui/frontend/src/components/DryRunResults.vue` | 新增 | 三级分组视图渲染 + 空状态 |
+| `webui/frontend/src/views/RunTest.vue` | 新增 | 运行测试页骨架（`NTabs`：Tab 1 Dry Run + Tab 2 连接测试表单内嵌，含 15s 超时增强） |
+| `webui/frontend/src/views/Dashboard.vue` | ~20 行 | 删除试运行按钮/弹窗/相关状态；新增「运行测试」链接 + 开关联动预留（B5） |
+| `webui/frontend/src/views/Advanced.vue` | **删除** | 三个标签页全部迁出（Dry Run/连接测试 → 运行测试页；配置导入导出 → 设置页） |
+| `webui/frontend/src/views/Settings.vue` | 0~5 行 | 保留现有导入导出按钮（已满足收敛）；按需微调 |
+| `webui/frontend/src/main.ts` / `App.vue` | ~4 行 | 新增路由 `/run-test` + 菜单「运行测试」；删除路由 `/advanced` + 菜单「高级功能」 |
+| `Design1.md` | 同步 | 12.9 措辞对齐（规则明细列表，与实现一致） |
+
+**同步全局开关（Phase 1-5，原设计）：**
 
 | 文件 | 改动量 | 说明 |
 |------|--------|------|
@@ -497,22 +761,27 @@ if cfg.SyncEnabled {
 | `webui/api/sync.go` | ~30 行 | `handleSyncPause` / `handleSyncResume` + 路由注册 + `handleSyncTrigger` 暂停保护 |
 | `main.go` | ~5 行 | 启动时检查 `cfg.SyncEnabled` 决定是否 `go s.Run()` |
 | `app/app.go` | ~5 行 | `.env` 模式同样检查 + `WaitForSignal` 适配 |
-| `webui/frontend/src/views/Dashboard.vue` | ~35 行 | 开关组件 + 暂停/恢复 API 调用 + 按钮状态联动 |
-| `webui/frontend/src/types.ts` | +1 字段 | `SyncStatus.enabled: boolean` |
+| `webui/frontend/src/views/Dashboard.vue` | ~20 行 | 开关组件 + 暂停/恢复 API 调用 + 按钮状态联动（B5 预留直接生效） |
 
-**合计**：后端约 105 行，前端约 35 行，总计约 **140 行**。零 schema 变更，零新文件。
+**合计**：测试功能升级约 135 行（后端）+ 新增 3 个前端文件 + 删除 1 个前端文件；全局开关约 105 行（后端）+ 前端约 35 行。零 schema 变更。
 
 ### 12.2 实施顺序
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
+| **Phase 0-1** | 前端共享逻辑抽离 `useDryRun.ts` + 类型更新（`types.ts`） | 无 |
+| **Phase 0-2** | 后端 DryRun 升级：明细化 + 响应包装 + 限速 + 快照锁 + 防重入；连接测试凭据空值提示（`targets.go`） | Phase 0-1 的接口约定 |
+| **Phase 0-3** | 运行测试页落地：`RunTest.vue`（Dry Run + 连接测试双标签，含 15s 超时）+ `DryRunResults.vue` + 路由/菜单新增 | Phase 0-1, 0-2 |
+| **Phase 0-4** | 页面收敛：`Settings.vue` 导入导出确认（保留现有按钮）→ 删除 `Advanced.vue` + `/advanced` 路由与菜单 → Dashboard 收尾（「运行测试」链接 + 开关联动预留 B5） | Phase 0-3 |
 | **Phase 1** | 数据层：`Config.SyncEnabled` + `Store` 读写 + `env.go` 解析 | 无 |
 | **Phase 2** | Syncer 核心：暂停门控 + `Pause()`/`Resume()`/`IsEnabled()` | Phase 1 |
 | **Phase 3** | API 层：端点 + 路由 + 接口扩展 + Trigger 保护 | Phase 1, 2 |
 | **Phase 4** | 启动决策：`main.go` + `app.go` 的条件启动 | Phase 1, 2 |
-| **Phase 5** | 前端：Dashboard 开关 + 状态联动 | Phase 3 |
+| **Phase 5** | 前端：Dashboard 开关 + 状态联动（复用 Phase 0-4 预留） | Phase 3 |
 
 ### 12.3 验收标准
+
+**全局开关（原 8 条）：**
 
 1. **默认行为不变**：首次启动（无 `sync_enabled` 键）时，同步立即开始（向后兼容）
 2. **暂停持久化**：暂停后 → 重启 → 同步保持暂停
@@ -522,3 +791,17 @@ if cfg.SyncEnabled {
 6. **优雅暂停**：暂停时若正在同步，等待当前轮次完成后进入暂停
 7. **`.env` 模式**：`SYNC_ENABLED=false` 时启动不执行同步
 8. **前端状态一致**：Dashboard 开关状态与后端实际状态实时同步
+
+**Dry Run 与测试功能升级（本次新增）：**
+
+9. **明细化**：运行测试页返回并展示逐条规则明细（协议/端口/动作/CIDR/描述），而非仅计数
+10. **三级分组**：Dry Run 结果按「目标 → 域名 → 规则」分组展示，待添加/待删除分列
+11. **空状态**：未执行、无目标、无规则、无变更四种空状态均有对应文案（warnings 语义化）
+12. **错误可见**：400/409/500 均通过 `message.error` 展示 `data.error`，不再误报成功
+13. **防连点**：执行中按钮禁用；后端重复请求返回 409
+14. **限速合规**：连续执行 Dry Run 时，同云厂商请求间隔不小于 `rateLimitInterval`
+15. **入口合并**：仪表盘、高级功能不再出现 Dry Run 入口，全部由「运行测试」页承载
+16. **连接测试迁入**：连接测试在「运行测试」页 Tab 2 可用，表单/结果语义与迁移前一致；暂停状态下可用
+17. **连接测试超时**：云 API 15s 无响应时前端提示"连接超时（15 秒）"，loading 解除
+18. **凭据空值提示**：凭据未配置时连接测试返回"腾讯云/阿里云凭据未配置，请先在全局设置中填写"
+19. **页面收敛**：高级功能页删除（`/advanced` 路由、菜单、`Advanced.vue` 文件均移除）；配置导入/导出仅由全局设置页承载，导入后设置表单即时刷新
