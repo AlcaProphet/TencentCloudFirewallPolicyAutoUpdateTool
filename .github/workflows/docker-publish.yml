@@ -10,7 +10,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # 包名固定为 fwalizer（与 AGENTS.md §十 镜像命名一致）；owner 动态取自仓库，fork 后仍可用
+  IMAGE_NAME: ${{ github.repository_owner }}/fwalizer
 
 jobs:
   docker:
