@@ -1,6 +1,8 @@
 # Design2.md — 同步全局开关与运行测试页设计
 
-> 本文档描述「同步全局开关」「运行测试页（Dry Run + 连接测试）」「页面收敛（高级功能页拆分）」的完整设计方案，涵盖需求分析、存储方案、核心机制、API 设计、WebUI 交互、兼容性分析及风险评估。所有决策以 [Design1.md](./Design1.md) 架构设计为依据，编码约束遵循 [AGENTS.md](./AGENTS.md)。
+> 本文档描述「同步全局开关」「运行测试页（Dry Run + 连接测试）」「页面收敛（高级功能页拆分）」的设计构想，涵盖需求分析、存储方案、核心机制、API 设计、WebUI 交互、兼容性分析及风险评估。
+>
+> **文档定位：** 本文档属于**设计构想（非强制规定）**。编码约束遵循 [AGENTS.md](./AGENTS.md)（项目唯一强要求文档）；与 AGENTS.md 或用户决策冲突时，以用户确认为准；详细构建方案见 [Build3.md](./Build3.md)。
 >
 > **版本说明（本版整合）**：在原「同步全局开关」设计基础上，整合 Dry Run 与连接测试功能升级方案——原分布于仪表盘（`Dashboard.vue` 试运行按钮）、高级功能（`Advanced.vue` Dry Run 标签页、连接测试标签页、配置导入导出标签页）的功能统一收敛：
 >
@@ -61,7 +63,7 @@
 Dry Run 与测试功能的升级动机（本次整合）：
 
 1. **三处入口分散且体验不对等**：仪表盘「试运行」`dryRun()`、高级功能「Dry Run」`runDryRun()` 调用同一端点 `POST /api/sync/dryrun`、同一 handler、底层复用同一份 `Syncer.DryRun()`，差异仅在前端展示层；仪表盘版无 loading、无错误处理，高级功能版不检查 `res.ok`（后端 400/500 的 `{"error":...}` 会被当结果渲染，且误报成功）。连接测试位于高级功能页第三个标签，与 Dry Run 同属"测试"心智模型，分散在不同入口。
-2. **结果仅计数、明细被丢弃**：`provider.Diff` 已算出完整明细（`DiffResult{ToAdd []RuleAction, ToDelete []RuleInfo}`），`Syncer.DryRun()` 只取 `len()`，用户只能看到"加 3 条、删 1 条"，无法确认具体规则；与 `Design1.md` 12.9「返回 toAdd 和 toDelete 规则列表」的文档描述不一致。
+2. **结果仅计数、明细被丢弃**：`provider.Diff` 已算出完整明细（`DiffResult{ToAdd []RuleAction, ToDelete []RuleInfo}`），`Syncer.DryRun()` 只取 `len()`，用户只能看到"加 3 条、删 1 条"，无法确认具体规则；与历史构建文档 [Build1.md](./Build1.md) §12.9「返回 JSON：每个域名/目标的 toAdd 和 toDelete 规则列表」的承诺不一致。
 3. **Dry Run 无限速、无防重入、有竞态**：`syncAll()` 每域名间有 `rateLimitInterval` 限速，`DryRun()` 循环无限速（频繁点击会冲击云 API 配额）；无防重入（可并发多次执行）；遍历 `s.providers`/`s.cfg` 无读锁，与热重载并发存在数据竞态。
 4. **Dry Run 空状态无语义**：无目标或无规则时返回 `[]`，用户无法区分"没配置"与"无变更"。
 5. **配置导入导出重复实现**：`Settings.vue` 保存行与 `Advanced.vue` 配置标签页均实现了「导出配置」「导入配置」（同一对端点），重复维护。
@@ -763,7 +765,7 @@ go s.Run()   // 始终启动（与 7.1 一致）；启动门控由 Run() 内部�
 | `webui/frontend/src/views/Targets.vue` | ~15 行 | 弹窗测试连接**保留**并接入 `api.ts` + 15s 超时；保存/删除接入 `api.ts`；`cloudOptions` 引共享常量 |
 | `webui/frontend/src/views/Settings.vue` | 0~5 行 | 保留现有导入导出按钮（已满足收敛）；`save()` 接入 `api.ts`；按需微调 |
 | `webui/frontend/src/main.ts` / `App.vue` | ~4 行 | 新增路由 `/run-test` + 菜单「运行测试」；删除路由 `/advanced` + 菜单「高级功能」 |
-| `Design1.md` | 同步 | 12.9 措辞对齐（规则明细列表，与实现一致） |
+| `Design1.md` | 同步 | 特性表（L274「Dry Run \| 执行到 Diff 为止，不实际写入」）与页面列表（L195「高级功能（Dry Run、配置导入/导出、健康检查）」）措辞对齐（注：Design1.md 无 12.9 章节，Dry Run 描述实际位于特性表与页面列表） |
 
 **同步全局开关（Phase 1-5，原设计）：**
 

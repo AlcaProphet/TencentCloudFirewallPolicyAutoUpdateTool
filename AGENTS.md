@@ -1,6 +1,7 @@
 # AGENTS.md — FWAlizer AI 编码指令
 
-> 本文档是给 AI 编码助手的指令集。项目设计大纲见 [Design1.md](./Design1.md)，技术实现细节见 [Build1.md](./Build1.md)。Build2.md 全部 11 步构建已于 2026-07-27 验收通过，最终状态见 [Issue3.md 全量复核记录](./Issue3.md#全量复核记录)。
+> 本文档是给 AI 编码助手的指令集，也是项目**唯一的强要求文档**（详见「十二、文档体系与优先级」）。
+> 项目设计方向见 [Design1.md](./Design1.md) 与 [Design2.md](./Design2.md)（设计构想，非强制），当前构建方案见 [Build3.md](./Build3.md)，历史构建与问题记录见 [Build1.md](./Build1.md)、[Build2.md](./Build2.md)、[Issue1.md](./Issue1.md)、[Issue2.md](./Issue2.md)、[Issue3.md](./Issue3.md)。
 
 ---
 
@@ -8,7 +9,7 @@
 
 - **模块路径**：`github.com/alcaprophet/fwalizer`
 - **Go 版本**：`go 1.25`
-- **设计文档优先**：编码前先阅读 [Design1.md](./Design1.md) 和 [Build1.md](./Build1.md)；历史问题与修复记录见 Issue 系列归档文档（[Issue1.md](./Issue1.md)、[Issue2.md](./Issue2.md)、[Issue3.md](./Issue3.md)）
+- **文档定位与优先级**：编码前先阅读本文件（强要求）。设计构想见 [Design1.md](./Design1.md) 与 [Design2.md](./Design2.md)（非强制，供参考）；详细构建方案见 [Build3.md](./Build3.md)（当前）与 [Build1.md](./Build1.md)、[Build2.md](./Build2.md)（历史归档）；错误与修复记录见 [Issue1.md](./Issue1.md)、[Issue2.md](./Issue2.md)、[Issue3.md](./Issue3.md)（历史归档）
 
 ---
 
@@ -152,15 +153,36 @@
 
 ---
 
-## 十二、文档体系
+## 十二、文档体系与优先级
 
-| 文档 | 目标读者 | 内容 |
-|------|---------|------|
-| [Design1.md](./Design1.md) | 人类（开发者/用户） | 架构设计、需求、决策、路线图 |
-| [Build1.md](./Build1.md) | 开发者（历史归档） | 原始技术实现细节、分步构建计划（16 Step 已全部完成） |
-| [Build2.md](./Build2.md) | 开发者（历史归档） | 修复与功能构建计划（11 Step 已全部验收通过，详见 Issue3.md） |
-| [Issue3.md](./Issue3.md) | 开发者 | 第13轮审查 + 全量复核记录（当前权威状态） |
-| [Issue2.md](./Issue2.md) | 开发者（历史归档） | 第11-12轮审查问题与合规验证（已全部修复） |
-| [Issue1.md](./Issue1.md) | 开发者（历史归档） | 第1-10轮审查历史问题精简归档 |
-| [FutureDesktopDevelop.md](./FutureDesktopDevelop.md) | 开发者 | 桌面端功能搁置记录与后续重启思路 |
-| AGENTS.md（本文件） | AI 编码助手 | 编码指令与约束 |
+### 12.1 文档定位与优先级（本文件为唯一强要求）
+
+| 文档类型 | 文件 | 定位 | 约束力 |
+|---------|------|------|--------|
+| **强要求** | **AGENTS.md（本文件）** | AI 编码指令与约束 | **唯一强要求，尽量不违背** |
+| 设计构想 | [Design1.md](./Design1.md) / [Design2.md](./Design2.md) | 设计大方向、架构构想、决策记录 | 非强制，供参考 |
+| 构建方案 | [Build1.md](./Build1.md) / [Build2.md](./Build2.md)（历史归档）、[Build3.md](./Build3.md)（当前） | 详细的分步构建方案与验收命令 | 非强制，执行建议 |
+| 问题记录 | [Issue1.md](./Issue1.md) / [Issue2.md](./Issue2.md) / [Issue3.md](./Issue3.md)（历史归档） | 记录的错误与修复方案 | 非强制，经验参考 |
+
+**执行规则：**
+
+- 只有 **AGENTS.md** 是强要求文档，其他类型文档均为**设计取向，不是强规则**，不需要严格遵守
+- **Design 文档**描述设计大方向与构想；**Build 文档**描述详细的构建方案；**Issue 文档**记录错误与修复方案
+- 若 Design / Build / Issue 文档之间存在冲突，或与 AGENTS.md 冲突：**提示用户并让用户做决策**，不擅自选择遵守哪一份
+- 若构想本身存在冲突，同样**提示用户**，由用户决策
+- Design1.md 等设计文档中的内容不是强制性规定，仅是设计类构想
+
+### 12.2 文档清单
+
+| 文档 | 目标读者 | 内容 | 状态 |
+|------|---------|------|------|
+| AGENTS.md（本文件） | AI 编码助手 | 编码指令与约束（**唯一强要求**） | 活跃 |
+| [Design1.md](./Design1.md) | 人类（开发者/用户） | 架构设计、需求、决策、路线图（设计构想） | 活跃 |
+| [Design2.md](./Design2.md) | 人类（开发者/用户） | 同步全局开关 + 运行测试页设计（设计构想） | 活跃 |
+| [Build3.md](./Build3.md) | 开发者 | 当前构建方案：同步全局开关 + 运行测试页（Step 1-11） | 活跃 |
+| [Build1.md](./Build1.md) | 开发者 | 原始构建计划与技术实现细节（Step 1-16，已全部完成，技术参考） | 历史归档 |
+| [Build2.md](./Build2.md) | 开发者 | 修复与功能构建计划（Step 1-11，已全部验收通过） | 历史归档 |
+| [Issue3.md](./Issue3.md) | 开发者 | 第13-15轮审查问题与修复记录 | 历史归档 |
+| [Issue2.md](./Issue2.md) | 开发者 | 第11-12轮审查问题与合规验证记录 | 历史归档 |
+| [Issue1.md](./Issue1.md) | 开发者 | 第1-10轮审查历史问题精简归档 | 历史归档 |
+| [FutureDesktopDevelop.md](./FutureDesktopDevelop.md) | 开发者 | 桌面端功能搁置记录与后续重启思路 | 归档 |

@@ -1,10 +1,10 @@
 # FWAlizer 功能构建计划（Build3：同步全局开关 + 运行测试页）
 
-> **文档定位：** 本文档是「同步全局开关」与「运行测试页（Dry Run + 连接测试）」两大功能的**唯一构建依据**。
-> - 设计大纲：[Design2.md](./Design2.md)（权威设计，含需求、API、交互、兼容性、风险、验收）
-> - 架构依据：[Design1.md](./Design1.md)（人类可读架构设计，本构建完成后需同步其 12.9 措辞）
-> - 编码指令：[AGENTS.md](./AGENTS.md)（所有代码必须遵守：简单轻量化、不过度防御、内部使用导向、中文注释、log/slog、增量添加+精确删除）
-> - 历史构建：[Build1.md](./Build1.md)（Step 1-16，已归档）、[Build2.md](./Build2.md)（Step 1-11，已归档）
+> **文档定位：** 本文档是「同步全局开关」与「运行测试页（Dry Run + 连接测试）」两大功能的**当前构建方案**（依据 AGENTS.md §12.1：Build 文档为详细构建方案，非强规则）。
+> - 设计构想：[Design2.md](./Design2.md)（设计大方向与构想，供参考；与 AGENTS.md 或用户决策冲突时以用户确认为准）
+> - 架构参考：[Design1.md](./Design1.md)（设计构想；本构建完成后需同步其特性表与页面列表的 Dry Run 描述，见 Step 10）
+> - 编码指令：[AGENTS.md](./AGENTS.md)（**唯一强要求**：简单轻量化、不过度防御、内部使用导向、中文注释、log/slog、增量添加+精确删除）
+> - 历史构建：[Build1.md](./Build1.md)（Step 1-16，已归档）、[Build2.md](./Build2.md)（Step 1-11，已归档）；问题记录见 [Issue1.md](./Issue1.md)、[Issue2.md](./Issue2.md)、[Issue3.md](./Issue3.md)（历史归档）
 >
 > **执行原则（与 Build1/Build2 一致）：**
 > - 每一步完成后均可编译、可测试。不跳步、不并行多步。
