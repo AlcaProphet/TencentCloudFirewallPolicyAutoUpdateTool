@@ -125,7 +125,7 @@
 
 | 检查项 | 结果 | 证据 |
 |--------|------|------|
-| `.dockerignore` 7 行 | ✅ | `Documents/` `*.md` `.env` `.git/` `Dockerfile` `.dockerignore` `Makefile` |
+| `.dockerignore` 7 行 | ✅ | `PlatformAPIDocs/` `*.md` `.env` `.git/` `Dockerfile` `.dockerignore` `Makefile` |
 | `.env.example` targets 从 0 开始 | ✅ | L35 `从 0 开始`；L40 `ACCEPT\|1`；L41 `ACCEPT\|0,2` |
 | `README.md` DNS `223.5.5.5` | ✅ | L91 |
 | `go.mod` `golang.org/x/sys` direct | ✅ | L14 无 `// indirect` |

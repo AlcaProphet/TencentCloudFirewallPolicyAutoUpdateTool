@@ -145,7 +145,7 @@
 - **所有 error 必须处理**，不可忽略返回值
 - 日志使用 `log/slog`（Go 1.21+ 内置结构化日志）
 - 注释使用**中文**（面向国内开发者）
-- 遵守 `Documents/` 中的 API 文档要求（参数格式、字段长度限制、频率限制）
+- 遵守 `PlatformAPIDocs/` 中的 API 文档要求（参数格式、字段长度限制、频率限制）
 - 多云抽象基于 Provider 接口 + 工厂注册模式（详见 HistoryDocs/Build1.md）
 - 桌面端系统托盘功能**已搁置**（代码归档至 `desktop/`，详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)）
 - 日志多路复用器 `MultiHandler` 统一定义在 `app/logutil.go`（消除与 `webui/api/logstream.go` 的重复）
@@ -185,13 +185,13 @@
 | [FutureDesktopDevelop.md](./FutureDesktopDevelop.md) | 开发者 | 桌面端功能搁置记录与后续重启思路 | 归档 |
 | [HistoryDocs/](./HistoryDocs/) | 开发者 | Build1-4、Issue1-3、Design1-3 共 10 份历史文档（已存档，仅记录，不再用于构建，仅用于核查等情况） | 已存档 |
 
-### 12.3 API 使用要求文档（Documents/）
+### 12.3 API 使用要求文档（PlatformAPIDocs/）
 
-仓库 `Documents/` 目录存放各云平台 **API 使用要求** 文档（参数格式、字段长度限制、频率限制等），编码前查阅：
+仓库 `PlatformAPIDocs/` 目录存放各云平台 **API 使用要求** 文档（参数格式、字段长度限制、频率限制等），编码前查阅：
 
 | 目录 | 内容 |
 |------|------|
-| `Documents/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
-| `Documents/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
-| `Documents/AliyunSASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
-| `Documents/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |
+| `PlatformAPIDocs/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
+| `PlatformAPIDocs/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
+| `PlatformAPIDocs/AliyunSASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
+| `PlatformAPIDocs/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |

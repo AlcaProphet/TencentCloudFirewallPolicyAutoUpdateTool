@@ -215,16 +215,16 @@ WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令�
 | 轻量云（SWAS） | `AliyunSWASFullAccess`（或自定义：`swas:ListFirewallRules` + `swas:CreateFirewallRules` + `swas:DeleteFirewallRules`） |
 | ECS | `AliyunECSFullAccess`（或自定义：`ecs:DescribeSecurityGroupAttribute` + `ecs:AuthorizeSecurityGroup` + `ecs:RevokeSecurityGroup`） |
 
-### API 使用要求文档（Documents/）
+### API 使用要求文档（PlatformAPIDocs/）
 
-仓库 `Documents/` 目录存放各云平台 **API 使用要求** 文档（参数格式、字段长度限制、频率限制等）：
+仓库 `PlatformAPIDocs/` 目录存放各云平台 **API 使用要求** 文档（参数格式、字段长度限制、频率限制等）：
 
 | 目录 | 内容 |
 |------|------|
-| `Documents/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
-| `Documents/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
-| `Documents/AliyunSASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
-| `Documents/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |
+| `PlatformAPIDocs/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
+| `PlatformAPIDocs/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
+| `PlatformAPIDocs/AliyunSASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
+| `PlatformAPIDocs/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |
 
 ---
 
@@ -295,7 +295,7 @@ fwalizer/
 ├── webui/                   # WebUI 后端（HTTP API + 前端 embed）
 │   └── frontend/            # Vue 3 + Vite + Naive UI 前端源码
 ├── internal/                # 内部工具（端口转换、标签解析）
-├── Documents/               # 各云平台 API 使用要求文档
+├── PlatformAPIDocs/          # 各云平台 API 使用要求文档
 ├── HistoryDocs/             # 历史工程文档（Design1-3/Build1-4/Issue1-3，已存档）
 ├── Design4.md               # 当前设计记录
 ├── Build5.md                # 当前构建方案

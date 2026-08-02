@@ -1812,7 +1812,7 @@ docker-build:
 #### 12.3 `.dockerignore`
 
 ```
-Documents/
+PlatformAPIDocs/
 *.md
 .env
 .git/
