@@ -62,6 +62,7 @@ export interface SyncLogEntry {
   result: string
   added: number
   deleted: number
+  error?: string // 失败详情（后端已返回，Build4 Step 4 前端消费）
 }
 
 export interface SyncEvent {

@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { NDataTable, NTag, NCollapse, NCollapseItem } from 'naive-ui'
+// 同步日志页：历史记录（最顶部）+ 实时运行日志（默认展开）
+// 历史记录：failed 可点击查看错误详情；支持清空（DELETE /api/sync/logs）
+import { NDataTable, NTag, NCollapse, NCollapseItem, NModal, NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui'
 import { ref, onMounted, onUnmounted, h } from 'vue'
 import { request } from '../api'
 import type { SyncLogEntry } from '../types'
 
 const logs = ref<SyncLogEntry[]>([])
-const events = ref<any[]>([])
 const logLines = ref<string[]>([])
-let es: EventSource | null = null
+const message = useMessage()
+
+// failed 错误报告弹窗
+const showErrorModal = ref(false)
+const errorDetail = ref<SyncLogEntry | null>(null)
+
 let logEs: EventSource | null = null
 
 // ─── 时间格式化（本地时区，自动检测） ───
@@ -22,38 +28,6 @@ function formatTime(ts: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${tzStr}`
 }
 
-// ─── 事件类型映射 ───
-const eventTypeLabels: Record<string, string> = {
-  'sync:start': '同步开始',
-  'sync:complete': '同步完成',
-  'domain:sync_complete': '域名同步完成',
-  'sync:error': '同步失败',
-  'dns:failed': 'DNS解析失败',
-  'rule:changed': '规则变更',
-}
-
-function eventTagType(type: string): string {
-  if (type === 'sync:error' || type === 'dns:failed') return 'error'
-  if (type === 'sync:complete') return 'success'
-  return 'info'
-}
-
-function formatEventData(row: any): string {
-  const d = row.data || {}
-  switch (row.type) {
-    case 'sync:start':
-      return `${d.targets ?? 0} 个目标，${d.rules ?? 0} 条规则`
-    case 'sync:complete':
-      return d.domain ? `${d.provider} / ${d.domain}` : `耗时 ${d.duration ?? '-'}`
-    case 'sync:error':
-      return `${d.provider ?? ''} / ${d.domain ?? ''}：${d.error ?? '未知错误'}`
-    case 'dns:failed':
-      return `${d.domain ?? ''}：${d.error ?? '解析超时'}`
-    default:
-      return JSON.stringify(d)
-  }
-}
-
 // ─── 生命周期 ───
 onMounted(async () => {
   try {
@@ -63,56 +37,52 @@ onMounted(async () => {
     console.warn('加载同步日志失败:', e.message)
   }
 
-  // SSE 实时事件推送
-  es = new EventSource('/api/sync/events')
-  es.onmessage = (e) => {
-    try {
-      const ev = JSON.parse(e.data)
-      events.value.unshift(ev)
-      if (events.value.length > 50) events.value.pop()
-    } catch { /* ignore */ }
-  }
-
-  // SSE 实时日志流
+  // SSE 实时日志流（订阅时后端回放最近 1000 条，见 Build4 Step 2）
   logEs = new EventSource('/api/logs/stream')
   logEs.onmessage = (e) => {
     logLines.value.push(e.data)
-    if (logLines.value.length > 200) logLines.value.shift()
+    if (logLines.value.length > 1000) logLines.value.shift()
   }
 })
 
 onUnmounted(() => {
-  if (es) es.close()
   if (logEs) logEs.close()
 })
 
-// ─── 历史记录列 ───
+// ─── 历史记录 ───
+function openError(row: SyncLogEntry) {
+  errorDetail.value = row
+  showErrorModal.value = true
+}
+
+async function clearLogs() {
+  try {
+    await request('/api/sync/logs', { method: 'DELETE' })
+    logs.value = []
+    message.success('历史记录已清空')
+  } catch (e: any) {
+    message.error(`清空失败: ${e.message}`)
+  }
+}
+
 const columns = [
   { title: '时间', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
   { title: '目标', key: 'target' },
   { title: '域名', key: 'domain' },
   {
-    title: '结果',
-    key: 'result',
+    title: '结果', key: 'result',
     render(row: any) {
-      const type = row.result === 'success' ? 'success' : row.result === 'failed' ? 'error' : 'warning'
-      return h(NTag, { type, size: 'small' }, { default: () => row.result })
+      const failed = row.result === 'failed'
+      const type = failed ? 'error' : row.result === 'success' ? 'success' : 'warning'
+      return h(NTag, {
+        type, size: 'small',
+        style: failed ? 'cursor: pointer;' : '',
+        onClick: failed ? () => openError(row) : undefined,
+      }, { default: () => row.result })
     }
   },
   { title: '新增', key: 'added' },
   { title: '删除', key: 'deleted' },
-]
-
-// ─── 实时事件列 ───
-const eventColumns = [
-  { title: '时间', key: 'timestamp', render: (row: any) => formatTime(row.timestamp) },
-  {
-    title: '事件', key: 'type',
-    render(row: any) {
-      return h(NTag, { size: 'small', type: eventTagType(row.type) as any }, { default: () => eventTypeLabels[row.type] || row.type })
-    }
-  },
-  { title: '详情', key: 'data', render: (row: any) => formatEventData(row) },
 ]
 </script>
 
@@ -120,16 +90,35 @@ const eventColumns = [
   <div>
     <h2>同步日志</h2>
 
-    <h3>实时事件</h3>
-    <NDataTable :columns="eventColumns" :data="events" :bordered="true" :max-height="200" size="small" />
+    <!-- 历史记录（最顶部，Build4 Step 4：改进 5） -->
+    <NSpace justify="space-between" align="center">
+      <h3 style="margin: 0">历史记录</h3>
+      <NPopconfirm @positive-click="clearLogs">
+        <template #trigger>
+          <NButton size="small" type="error" tertiary>清空记录</NButton>
+        </template>
+        将清空全部同步历史记录，此操作不可恢复
+      </NPopconfirm>
+    </NSpace>
+    <NDataTable :columns="columns" :data="logs" :bordered="true" :max-height="400" style="margin-top: 12px" />
 
-    <h3 style="margin-top: 16px">历史记录</h3>
-    <NDataTable :columns="columns" :data="logs" :bordered="true" :max-height="400" />
-
-    <NCollapse style="margin-top: 16px">
+    <!-- 实时运行日志（默认展开，Build4 Step 4：改进 6） -->
+    <NCollapse style="margin-top: 16px" :default-expanded-names="['logs']">
       <NCollapseItem title="运行日志（实时）" name="logs">
         <pre style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;">{{ logLines.join('\n') || '等待日志输出...' }}</pre>
       </NCollapseItem>
     </NCollapse>
+
+    <!-- failed 错误报告弹窗（Build4 Step 4：改进 9） -->
+    <NModal v-model:show="showErrorModal" preset="card" title="同步失败详情" style="width: 600px">
+      <p v-if="errorDetail" style="line-height: 1.9">
+        <b>时间：</b>{{ formatTime(errorDetail.timestamp) }}<br />
+        <b>目标：</b>{{ errorDetail.target || '-' }}<br />
+        <b>域名：</b>{{ errorDetail.domain || '-' }}
+      </p>
+      <p style="margin-bottom: 8px"><b>错误原因：</b></p>
+      <pre v-if="errorDetail?.error" style="background: #1e1e1e; color: #f44336; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;">{{ errorDetail.error }}</pre>
+      <p v-else style="color: #999">该记录未保存错误详情</p>
+    </NModal>
   </div>
 </template>

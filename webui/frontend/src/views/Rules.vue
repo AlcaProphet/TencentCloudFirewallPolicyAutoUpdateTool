@@ -2,6 +2,7 @@
 import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
 import { ref, onMounted, h, watch } from 'vue'
 import { request } from '../api'
+import { cloudLabelMap } from '../constants'
 import type { DomainRule } from '../types'
 
 const rules = ref<DomainRule[]>([])
@@ -42,7 +43,7 @@ async function loadTargets() {
   try {
     const data = await request<any[]>('/api/targets')
     targetOptions.value = data.map((t: any) => ({
-      label: `${t.cloud_type} / ${t.resource_id}`,
+      label: `${cloudLabelMap[t.cloud_type] || t.cloud_type} / ${t.resource_id}`,
       value: t.id,
     }))
   } catch (e: any) {

@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -271,5 +272,50 @@ func TestIsEnabled(t *testing.T) {
 	s2 := New(&config.Config{SyncEnabled: true}, nil, localResolver(t))
 	if !s2.IsEnabled() {
 		t.Error("SyncEnabled=true 初始化应 IsEnabled()==true")
+	}
+}
+
+// ─── Build4 Step 1：计数链路测试 ───
+
+// countingProvider 测试用 Provider：记录 CreateRules/DeleteRules 成功收到的规则数量
+// （内嵌 stubProvider 继承 Name/CloudType/TargetIndex/GetRules/ConvertPorts）
+type countingProvider struct {
+	*stubProvider
+	created atomic.Int32
+	deleted atomic.Int32
+}
+
+func (m *countingProvider) CreateRules(rules []config.RuleAction) error {
+	m.created.Add(int32(len(rules)))
+	return nil
+}
+
+func (m *countingProvider) DeleteRules(rules []config.RuleInfo) error {
+	m.deleted.Add(int32(len(rules)))
+	return nil
+}
+
+// TestRetrySync_Counts 空云端规则 + 单域名规则 → 全部新增，added=1 deleted=0
+func TestRetrySync_Counts(t *testing.T) {
+	p := &countingProvider{stubProvider: &stubProvider{cloudType: config.CloudTCCVM, targetIndex: 0}}
+	cfg := &config.Config{Tag: "auto-dns"}
+	s := New(cfg, []provider.Provider{p}, localResolver(t))
+
+	resolved, err := s.resolver.Resolve(context.Background(), "localhost")
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	resolved = filterIPv4(resolved) // 与 syncDomain 实际执行路径一致（LookupIPAddr 对 localhost 同时返回 127.0.0.1 与 ::1，过滤后恒为 1 条 IPv4）
+	added, deleted, err := s.retrySync(p, config.DomainRule{
+		Host: "localhost", Protocol: "TCP", Ports: "443", Action: "ACCEPT", Targets: []int{0},
+	}, resolved)
+	if err != nil {
+		t.Fatalf("retrySync 失败: %v", err)
+	}
+	if added != 1 || deleted != 0 {
+		t.Errorf("计数 = added:%d deleted:%d, want 1/0", added, deleted)
+	}
+	if p.created.Load() != 1 || p.deleted.Load() != 0 {
+		t.Errorf("Provider 调用 = created:%d deleted:%d, want 1/0", p.created.Load(), p.deleted.Load())
 	}
 }

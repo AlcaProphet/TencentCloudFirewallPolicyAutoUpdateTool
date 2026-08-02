@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider, NMessageProvider } from 'naive-ui'
+// 应用外壳：侧边栏导航 + 全局主题（light/dark，DB 持久化，Build4 Step 5）
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, NSwitch } from 'naive-ui'
+import { darkTheme } from 'naive-ui'
 import { useRouter } from 'vue-router'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useSettings } from './composables/useSettings'
 
 const router = useRouter()
 const activeKey = ref('/')
+const { theme, applyTheme, setTheme } = useSettings()
 
 const menuOptions = [
   { label: '仪表盘', key: '/' },
@@ -20,15 +24,22 @@ function handleMenuUpdate(key: string) {
   activeKey.value = key
   router.push(key)
 }
+
+onMounted(applyTheme)
 </script>
 
 <template>
-  <NConfigProvider>
+  <NConfigProvider :theme="theme === 'dark' ? darkTheme : null">
     <NMessageProvider>
       <NLayout has-sider style="height: 100vh">
         <NLayoutSider bordered :width="200">
-          <div style="padding: 16px; font-weight: bold; font-size: 18px">FWAlizer</div>
+          <div style="padding: 16px 16px 0; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center">
+            <span>FWAlizer</span>
+            <!-- 全局主题切换（Build4 Step 5：改进 1） -->
+            <NSwitch size="small" :value="theme === 'dark'" @update:value="(v: boolean) => setTheme(v ? 'dark' : 'light')" />
+          </div>
           <NMenu
+            style="margin-top: 12px"
             :value="activeKey"
             :options="menuOptions"
             @update:value="handleMenuUpdate"

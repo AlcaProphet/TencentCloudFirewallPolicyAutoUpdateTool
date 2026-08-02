@@ -53,6 +53,7 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sync/resume", d.handleSyncResume)
 	mux.HandleFunc("GET /api/sync/events", d.handleSyncEvents)
 	mux.HandleFunc("GET /api/sync/logs", d.handleGetSyncLogs)
+	mux.HandleFunc("DELETE /api/sync/logs", d.handleClearSyncLogs)
 	// 实时日志流
 	mux.HandleFunc("GET /api/logs/stream", d.handleLogStream)
 	// 设置 + 配置导入导出

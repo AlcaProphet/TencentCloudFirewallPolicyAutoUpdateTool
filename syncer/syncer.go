@@ -408,7 +408,8 @@ func (s *Syncer) syncDomainInternal(p provider.Provider, rule config.DomainRule,
 		}
 	}
 
-	if err := s.retrySync(p, rule, resolved); err != nil {
+	added, deleted, err := s.retrySync(p, rule, resolved)
+	if err != nil {
 		slog.Error("同步失败", "provider", p.Name(), "domain", rule.Host, "error", err)
 		s.bus.Publish(notifier.Event{
 			Type:      notifier.EventSyncError,
@@ -422,7 +423,7 @@ func (s *Syncer) syncDomainInternal(p provider.Provider, rule config.DomainRule,
 	s.bus.Publish(notifier.Event{
 		Type:      notifier.EventDomainSyncComplete,
 		Timestamp: time.Now(),
-		Data:      map[string]any{"provider": p.Name(), "domain": rule.Host},
+		Data:      map[string]any{"provider": p.Name(), "domain": rule.Host, "added": added, "deleted": deleted},
 	})
 }
 

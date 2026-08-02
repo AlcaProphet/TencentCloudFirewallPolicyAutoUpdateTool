@@ -476,6 +476,12 @@ func (s *Store) GetSyncLogs(limit int) ([]SyncLog, error) {
 	return logs, rows.Err()
 }
 
+// ClearSyncLogs 清空全部同步历史记录（仅 sync_logs 表，不影响 targets/rules/settings）
+func (s *Store) ClearSyncLogs() error {
+	_, err := s.db.Exec("DELETE FROM sync_logs")
+	return err
+}
+
 // LoadConfig 从 SQLite 构建 Config
 func (s *Store) LoadConfig() (*Config, error) {
 	targets, err := s.GetTargets()

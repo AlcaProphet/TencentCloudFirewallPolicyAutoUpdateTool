@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, useMessage } from 'naive-ui'
-import { ref, onMounted, h } from 'vue'
+import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NAlert, useMessage } from 'naive-ui'
+import { ref, onMounted, h, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { request } from '../api'
 import { cloudOptions, cloudLabelMap } from '../constants'
+import { useSettings } from '../composables/useSettings'
 import type { TargetConfig, TestConnectionResult } from '../types'
 
 const targets = ref<TargetConfig[]>([])
@@ -12,6 +14,26 @@ const form = ref({ cloud_type: 'tc_lighthouse', region: '', resource_id: '' })
 const testResult = ref('')
 const message = useMessage()
 
+// ─── Keys 缺失提示（改进 12：仅提示，不阻止保存） ───
+const router = useRouter()
+const { refresh: refreshSettings, tcReady, aliReady } = useSettings()
+const credWarning = ref('')
+
+// 依据当前表单云类型刷新凭据提示
+function updateCredWarning() {
+  const ct = form.value.cloud_type
+  if (ct.startsWith('tc_')) {
+    credWarning.value = tcReady.value ? '' : '腾讯云凭据未配置，请先在「全局设置」中填写 SecretId/SecretKey，否则同步将失败'
+  } else if (ct.startsWith('ali_')) {
+    credWarning.value = aliReady.value ? '' : '阿里云凭据未配置，请先在「全局设置」中填写 AccessKeyId/AccessKeySecret，否则同步将失败'
+  } else {
+    credWarning.value = ''
+  }
+}
+
+// 云类型变化时刷新提示
+watch(() => form.value.cloud_type, updateCredWarning)
+
 async function load() {
   try {
     targets.value = await request<TargetConfig[]>('/api/targets')
@@ -20,18 +42,24 @@ async function load() {
   }
 }
 
-onMounted(load)
+// 挂载：加载目标 + 凭据状态（refreshSettings 强制拉取保证提示新鲜）
+onMounted(async () => {
+  await Promise.all([load(), refreshSettings()])
+  updateCredWarning()
+})
 
 function openAdd() {
   editingId.value = null
   form.value = { cloud_type: 'tc_lighthouse', region: '', resource_id: '' }
   showModal.value = true
+  updateCredWarning()
 }
 
 function openEdit(row: TargetConfig) {
   editingId.value = row.id
   form.value = { cloud_type: row.cloud_type, region: row.region, resource_id: row.resource_id }
   showModal.value = true
+  updateCredWarning()
 }
 
 async function saveTarget() {
@@ -111,6 +139,11 @@ const columns = [
 
     <NModal v-model:show="showModal" :title="editingId ? '编辑目标' : '添加目标'" preset="card" style="width: 500px">
       <NForm :model="form" label-placement="left" label-width="80">
+        <!-- Keys 缺失提示（改进 12） -->
+        <NAlert v-if="credWarning" type="warning" style="margin-bottom: 12px">
+          {{ credWarning }}
+          <NButton text type="primary" size="small" style="margin-left: 8px" @click="router.push('/settings')">去设置</NButton>
+        </NAlert>
         <NFormItem label="云产品">
           <NSelect v-model:value="form.cloud_type" :options="cloudOptions" />
         </NFormItem>

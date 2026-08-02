@@ -14,8 +14,10 @@ import (
 const maxRetries = 3
 
 // retrySync 带重试的完整同步流程（Describe → Diff → Create/Delete）
-// 每次重试都重新获取最新规则状态（乐观锁）
-func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved []dns.ResolvedIP) error {
+// 返回实际写入计数 (added, deleted)：累计各轮次中云 API 调用成功的写入量；
+// 重试轮重新 Diff（云端状态已更新），已生效规则不重复出现，天然避免重复计数；
+// 幂等跳过（规则已存在/已不存在）不计入，与 Dry Run 的 to_add/to_delete 口径一致
+func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved []dns.ResolvedIP) (added, deleted int, err error) {
 	var lastErr error
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
@@ -29,7 +31,7 @@ func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved
 		if err != nil {
 			lastErr = err
 			if !isRetryable(err) {
-				return err
+				return added, deleted, err
 			}
 			continue
 		}
@@ -39,7 +41,7 @@ func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved
 		desc := truncateDesc(tag.Format(s.cfg.Tag, rule.Comment), p.CloudType())
 		diff := provider.Diff(resolved, rule, desc, owned, p)
 
-		// 3. 执行删除
+		// 3. 执行删除（成功才计数；幂等"已不存在"视为成功但不计数）
 		if len(diff.ToDelete) > 0 {
 			if err := p.DeleteRules(diff.ToDelete); err != nil {
 				if isIdempotentDelete(err) {
@@ -47,14 +49,16 @@ func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved
 				} else {
 					lastErr = err
 					if !isRetryable(err) {
-						return err
+						return added, deleted, err
 					}
 					continue
 				}
+			} else {
+				deleted += len(diff.ToDelete)
 			}
 		}
 
-		// 4. 执行添加
+		// 4. 执行添加（成功才计数；幂等"已存在"视为成功但不计数）
 		if len(diff.ToAdd) > 0 {
 			if err := p.CreateRules(diff.ToAdd); err != nil {
 				if isIdempotentCreate(err) {
@@ -62,16 +66,18 @@ func (s *Syncer) retrySync(p provider.Provider, rule config.DomainRule, resolved
 				} else {
 					lastErr = err
 					if !isRetryable(err) {
-						return err
+						return added, deleted, err
 					}
 					continue
 				}
+			} else {
+				added += len(diff.ToAdd)
 			}
 		}
 
-		return nil // 成功
+		return added, deleted, nil // 成功
 	}
-	return lastErr
+	return added, deleted, lastErr
 }
 
 // isRetryable 判断是否可重试

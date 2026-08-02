@@ -18,14 +18,14 @@
 
 | Step | 内容 | 设计依据 | 状态 |
 |------|------|---------|------|
-| 1 | 同步日志计数链路修复（`retrySync` 返回计数 → 事件 Data 携带 → `StoreLogWriter` 落库） | Design3 §四 | ☐ 未开始 |
-| 2 | 实时日志流增强（环形缓冲历史回放 + TextHandler 格式统一 + 通道扩容） | Design3 §五 | ☐ 未开始 |
-| 3 | 历史记录清空端点（`ClearSyncLogs` + handler + 路由注册） | Design3 §8.2 | ☐ 未开始 |
-| 4 | 同步日志页重排（删实时事件 / 历史置顶 / 默认展开 / failed 弹窗 / 清空按钮 / 行数上限） | Design3 §七/§八 | ☐ 未开始 |
-| 5 | `useSettings` composable + 全局明暗主题（DB 持久化） | Design3 §三 | ☐ 未开始 |
-| 6 | 仪表盘 2×2 大卡片重设计 + 移除运行测试链接 + 首次使用引导 | Design3 §六/§9.1 | ☐ 未开始 |
-| 7 | 规则页「适用目标」中文云产品名 + 目标页 Keys 缺失提示 | Design3 §9.2 | ☐ 未开始 |
-| 8 | 文档同步（AGENTS.md 文档体系 / Design3.md 引用） | Design3 §13.1 | ☐ 未开始 |
+| 1 | 同步日志计数链路修复（`retrySync` 返回计数 → 事件 Data 携带 → `StoreLogWriter` 落库） | Design3 §四 | ✅ 验收通过（2026-08-02：build/vet/test -race 全绿；新增 TestRetrySync_Counts、TestStoreLogWriter_Counts、TestStoreLogWriter_ErrorDetail） |
+| 2 | 实时日志流增强（环形缓冲历史回放 + TextHandler 格式统一 + 通道扩容） | Design3 §五 | ✅ 验收通过（2026-08-02：build/vet/test -race 全绿；新增 TestLogBroadcaster_Replay/RingOverflow/Format/LevelFilter 均 PASS） |
+| 3 | 历史记录清空端点（`ClearSyncLogs` + handler + 路由注册） | Design3 §8.2 | ✅ 验收通过（2026-08-02：build/vet/test -race 全绿；新增 TestClearSyncLogs PASS） |
+| 4 | 同步日志页重排（删实时事件 / 历史置顶 / 默认展开 / failed 弹窗 / 清空按钮 / 行数上限） | Design3 §七/§八 | ✅ 验收通过（2026-08-02：npm run build 零错误；go build 不受影响） |
+| 5 | `useSettings` composable + 全局明暗主题（DB 持久化） | Design3 §三 | ✅ 验收通过（2026-08-02：npm run build 零错误；useSettings 含 load/refresh 双拉取） |
+| 6 | 仪表盘 2×2 大卡片重设计 + 移除运行测试链接 + 首次使用引导 | Design3 §六/§9.1 | ✅ 验收通过（2026-08-02：npm run build 零错误；四卡等高/大字体大按钮/引导条） |
+| 7 | 规则页「适用目标」中文云产品名 + 目标页 Keys 缺失提示 | Design3 §9.2 | ✅ 验收通过（2026-08-02：npm run build 零错误；cloudLabelMap 中文名 + NAlert 提示条） |
+| 8 | 文档同步（AGENTS.md 文档体系 / Design3.md 引用） | Design3 §13.1 | ✅ 验收通过（2026-08-02：全量回归 go build/vet/test -race + npm run build 全绿；文档链接核验无残留） |
 
 > 状态标记：☐ 未开始 / ◧ 进行中 / ✅ 验收通过
 
@@ -1480,4 +1480,5 @@ grep -rn "当前构建方案见 \[Build3" *.md || echo "OK: 无残留引用"
 |------|------|------|
 | v1.0 | 2026-08-02 | 依据 Design3.md 生成初始构建方案（Step 1-8） |
 | v1.1 | 2026-08-02 | 深度核验修正：① Step 1 测试补 `filterIPv4`（localhost 解析含 ::1，与 syncDomain 实际路径一致）；② Step 2 三个测试修正（中文消息被 TextHandler 加引号、LevelFilter 须经 slog.Logger 走 Enabled 检查）；③ Step 5 `useSettings` 增加 `refresh()` 强制拉取，Step 6 引导 / Step 7 提示改用 `refresh`（解决"设置页配置凭据后返回页面仍显示旧提示"） |
+| v1.2 | 2026-08-02 | **构建完成**：Step 1-8 全部验收通过（后端 build/vet/test -race 全绿，前端 npm run build 零错误，全量回归通过） |
 
