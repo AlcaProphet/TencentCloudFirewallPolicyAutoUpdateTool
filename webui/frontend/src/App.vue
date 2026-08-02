@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 应用外壳：侧边栏导航 + 全局主题（light/dark，DB 持久化，Build4 Step 5）
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, NSwitch } from 'naive-ui'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, NSwitch, NTooltip } from 'naive-ui'
 import { darkTheme } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import { ref, onMounted } from 'vue'
@@ -35,8 +35,16 @@ onMounted(applyTheme)
         <NLayoutSider bordered :width="200">
           <div style="padding: 16px 16px 0; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center">
             <span>FWAlizer</span>
-            <!-- 全局主题切换（Build4 Step 5：改进 1） -->
-            <NSwitch size="small" :value="theme === 'dark'" @update:value="(v: boolean) => setTheme(v ? 'dark' : 'light')" />
+            <!-- 主题切换：图标 + tooltip（Build4 Step 10：可读性增强） -->
+            <NTooltip>
+              <template #trigger>
+                <span style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+                  <span style="font-size: 16px">{{ theme === 'dark' ? '🌙' : '☀️' }}</span>
+                  <NSwitch size="small" :value="theme === 'dark'" @update:value="(v: boolean) => setTheme(v ? 'dark' : 'light')" />
+                </span>
+              </template>
+              切换明暗主题
+            </NTooltip>
           </div>
           <NMenu
             style="margin-top: 12px"

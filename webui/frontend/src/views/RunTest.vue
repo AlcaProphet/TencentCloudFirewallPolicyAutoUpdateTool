@@ -13,15 +13,15 @@ const message = useMessage()
 const route = useRoute()
 const router = useRouter()
 
-// ─── Tab 1：Dry Run ───
+// ─── Tab 1：模拟测试（Build4 Step 12：Dry Run 更名） ───
 const { loading, results, warnings, lastRunAt, run } = useDryRun()
 
 async function runDryRun() {
   try {
     await run()
-    message.success('Dry Run 完成')
+    message.success('模拟测试完成')
   } catch (e: any) {
-    message.error(`Dry Run 失败: ${e.message}`)
+    message.error(`模拟测试失败: ${e.message}`)
   }
 }
 
@@ -64,10 +64,12 @@ watch(activeTab, (v) => {
   <div>
     <h2>运行测试</h2>
     <NTabs v-model:value="activeTab" type="line">
-      <NTabPane name="dryrun" tab="Dry Run">
+      <NTabPane name="dryrun" tab="模拟测试">
         <NSpace vertical>
+          <!-- 说明文字（Build4 Step 12：模拟测试语义） -->
+          <div style="font-size: 12px; color: #888; margin-bottom: 4px">模拟测试仅生成变更预览，不实际写入云防火墙规则</div>
           <NSpace align="center">
-            <NButton type="primary" :loading="loading" @click="runDryRun">执行 Dry Run</NButton>
+            <NButton type="primary" :loading="loading" @click="runDryRun">执行模拟测试</NButton>
             <span v-if="lastRunAt" style="font-size: 12px; color: #999">
               上次执行：{{ lastRunAt.toLocaleTimeString() }}
             </span>

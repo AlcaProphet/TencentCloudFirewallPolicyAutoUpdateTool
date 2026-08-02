@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 同步日志页：历史记录（最顶部）+ 实时运行日志（默认展开）
 // 历史记录：failed 可点击查看错误详情；支持清空（DELETE /api/sync/logs）
-import { NDataTable, NTag, NCollapse, NCollapseItem, NModal, NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui'
+import { NDataTable, NTag, NModal, NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui'
 import { ref, onMounted, onUnmounted, h } from 'vue'
 import { request } from '../api'
 import type { SyncLogEntry } from '../types'
@@ -102,12 +102,9 @@ const columns = [
     </NSpace>
     <NDataTable :columns="columns" :data="logs" :bordered="true" :max-height="400" style="margin-top: 12px" />
 
-    <!-- 实时运行日志（默认展开，Build4 Step 4：改进 6） -->
-    <NCollapse style="margin-top: 16px" :default-expanded-names="['logs']">
-      <NCollapseItem title="运行日志（实时）" name="logs">
-        <pre style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;">{{ logLines.join('\n') || '等待日志输出...' }}</pre>
-      </NCollapseItem>
-    </NCollapse>
+    <!-- 实时运行日志（常驻展开，Build4 Step 11：移除折叠控件） -->
+    <h3 style="margin-top: 16px">运行日志（实时）</h3>
+    <pre style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;">{{ logLines.join('\n') || '等待日志输出...' }}</pre>
 
     <!-- failed 错误报告弹窗（Build4 Step 4：改进 9） -->
     <NModal v-model:show="showErrorModal" preset="card" title="同步失败详情" style="width: 600px">

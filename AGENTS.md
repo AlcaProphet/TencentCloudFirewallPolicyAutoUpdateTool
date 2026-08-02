@@ -90,7 +90,7 @@
 - 间隔由 `INTERVAL` 环境变量控制（如 `5m`、`30m`、`1h`）
 - 优雅退出：收到 `SIGTERM`/`SIGINT` 后，完成当前轮次再退出
 - 支持配置热重载（WebUI 修改后通过 channel 通知 Syncer）
-- 同步全局开关（`SYNC_ENABLED`/`sync_enabled`，默认 true）：暂停时 ticker 与手动 trigger 均不触发同步；Dry Run 与连接测试不受影响（独立于 Run() 主循环）
+- 同步全局开关（`SYNC_ENABLED`/`sync_enabled`，默认 true）：暂停时 ticker 与手动 trigger 均不触发同步；模拟测试与连接测试不受影响（独立于 Run() 主循环）
 
 ---
 
@@ -151,7 +151,7 @@
 - 日志多路复用器 `MultiHandler` 统一定义在 `app/logutil.go`（消除与 `webui/api/logstream.go` 的重复）
 - WebUI 模式通过 pidfile（`config/pidfile.go` + 平台文件）防止多实例运行
 - 事件类型：全局同步完成用 `EventSyncComplete`，逐域名同步完成用 `EventDomainSyncComplete`（定义于 `notifier/bus.go`）
-- 同步全局开关：`POST /api/sync/pause|resume` 端点（先写 DB 后通知 Syncer）；`SyncStatus.enabled` 字段；前端「运行测试」页（路由 `/run-test`）统一承载 Dry Run 与连接测试（`DryRunResponse{results, warnings}` 包装、`to_add`/`to_delete` 为规则明细数组）
+- 同步全局开关：`POST /api/sync/pause|resume` 端点（先写 DB 后通知 Syncer）；`SyncStatus.enabled` 字段；前端「运行测试」页（路由 `/run-test`）统一承载模拟测试与连接测试（`DryRunResponse{results, warnings}` 包装、`to_add`/`to_delete` 为规则明细数组）
 
 ---
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 仪表盘：2×2 大卡片（同步引擎 / 上次同步 / 统计概览 / 操作中心）+ 首次使用引导
 // 改进 3：不再放置「运行测试」入口（左侧菜单栏为唯一入口）
-import { NCard, NGrid, NGi, NButton, NTag, NAlert, NTooltip, NSpace, useMessage } from 'naive-ui'
+import { NCard, NGrid, NGi, NButton, NAlert, NTooltip, NSpace, useMessage } from 'naive-ui'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../api'
@@ -17,12 +17,12 @@ const message = useMessage()
 const { refresh, tcReady, aliReady } = useSettings()
 let timer: ReturnType<typeof setInterval> | null = null
 
-// 三态标签：enabled=true → 运行中（绿）；enabled=false → 已暂停（橙，引擎仍存活于暂停子循环）；running=false → 已停止
+// 三态标签：同步引擎状态（唯一展示：28px 大字 + 状态色；Build4 Step 9 去重）
 const engineTag = computed(() => {
-  if (!status.value.running) return { type: 'default' as const, text: '已停止' }
+  if (!status.value.running) return { text: '已停止', color: '#808080' }
   return status.value.enabled
-    ? { type: 'success' as const, text: '运行中' }
-    : { type: 'warning' as const, text: '已暂停' }
+    ? { text: '运行中', color: '#18a058' }
+    : { text: '已暂停', color: '#f0a020' }
 })
 
 async function fetchStatus() {
@@ -108,11 +108,9 @@ onUnmounted(() => {
     <NGrid :cols="2" :x-gap="16" :y-gap="16">
       <NGi>
         <NCard title="同步引擎" style="min-height: 200px">
-          <div style="font-size: 28px; font-weight: 600; margin-top: 20px">{{ engineTag.text }}</div>
-          <div style="margin-top: 12px">
-            <NTag :type="engineTag.type" size="large" :bordered="false">{{ engineTag.text }}</NTag>
-          </div>
-          <div style="font-size: 13px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；Dry Run 与连接测试在「运行测试」页使用</div>
+          <div :style="{ fontSize: '28px', fontWeight: 600, marginTop: '20px', color: engineTag.color }">{{ engineTag.text }}</div>
+          <!-- NTag 已移除（Build4 Step 9：状态显示去重，唯一展示） -->
+          <div style="font-size: 13px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；模拟测试与连接测试在「运行测试」页使用</div>
         </NCard>
       </NGi>
       <NGi>

@@ -82,7 +82,7 @@ docker run -d --name fwalizer --restart=always \
 | `TAG` | `auto-dns` | 规则标记前缀，用于识别本工具创建的规则 |
 | `INTERVAL` | `5m` | DNS 检查间隔（如 `30s`、`5m`、`1h`） |
 | `LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
-| `SYNC_ENABLED` | `true` | 同步全局开关：`false` 时启动不执行同步（Dry Run 不受影响） |
+| `SYNC_ENABLED` | `true` | 同步全局开关：`false` 时启动不执行同步（模拟测试不受影响） |
 | `FWALIZER_MODE` | 自动检测 | 强制运行模式：`env` / `webui` |
 
 ### DNS 配置
@@ -142,7 +142,7 @@ docker run -d --name fwalizer --restart=always \
 - 可通过 `FWALIZER_DATA_DIR` 环境变量自定义数据目录
 - 支持通过浏览器添加/编辑/删除云资源目标和域名规则
 - 修改配置后自动热重载，无需重启
-- 仪表盘提供**同步全局开关**（暂停/开启，状态持久化，重启后保持）；「运行测试」页（`/run-test`）统一承载 Dry Run（逐条规则明细：协议/端口/动作/CIDR/描述，响应为 `{results, warnings}` 包装）与连接测试（15s 超时）；暂停状态下 Dry Run 与连接测试均可用
+- 仪表盘提供**同步全局开关**（暂停/开启，状态持久化，重启后保持）；「运行测试」页（`/run-test`）统一承载模拟测试（逐条规则明细：协议/端口/动作/CIDR/描述，响应为 `{results, warnings}` 包装）与连接测试（15s 超时）；暂停状态下模拟测试与连接测试均可用
 
 ---
 

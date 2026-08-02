@@ -529,3 +529,217 @@ mux.HandleFunc("DELETE /api/sync/logs", d.handleClearSyncLogs)
 | A | DNS 失败写入历史记录 | 现 `EventDNSFailed` 不落库；可将其写入 `sync_logs`（`result=failed`、`error`=DNS 错误、`domain` 已含），提升故障可见性——需在 `main.go` 增加 `EventDNSFailed` 订阅 |
 | B | 日志页「暂停输出」按钮 | 高日志量时前端可暂停渲染（性能考虑），内部工具场景可选 |
 | C | 主题设置项加入全局设置页 | 目前主题仅侧边栏切换；如需在设置页展示/管理，复用同一 `theme` 键即可 |
+
+---
+
+## 十四、WebUI 细节改进研究（后续改进，用户已确认决策）
+
+> 本节为 Build4 构建完成后追加的 4 项 WebUI 细节改进研究（2026-08-02），均已完成现状确认与方案取舍确认（用户决策项以 **✅ 已确认** 标注），待后续 Build 文档承接实施。**实施前不修改任何代码。**
+
+### 14.1 改进 A：仪表盘·同步引擎状态显示去重
+
+#### 现状确认
+
+- **DOM 位置**：`Dashboard.vue` 同步引擎卡片（Build4 Step 6 产出）：
+
+```
+NCard「同步引擎」
+├── 大字 28px：{{ engineTag.text }}（运行中/已暂停/已停止，无背景色）
+├── NTag size="large" :type="engineTag.type"（带颜色背景 success/warning/default）← 重复
+└── 灰色说明文字 13px（辅助说明，非状态，保留）
+```
+
+- **数据来源**：`engineTag` computed（`status.running`/`status.enabled` 三态 → `type: success/warning/default`）；
+- **渲染条件**：无条件渲染，两处均输出同一 `engineTag.text` → 状态文本重复显示两次。
+
+#### 推荐方案（✅ 已确认：移除 NTag + 大字上色）
+
+- 移除 `NTag` 元素，保留 28px 大字作为**唯一状态展示**；
+- `engineTag` computed 扩展返回 `{ text, color }`：运行中 `#18a058`（绿）、已暂停 `#f0a020`（橙）、已停止 `#808080`（灰），大字通过 `:style="{ color: engineTag.color }"` 上色；
+- 颜色硬编码（与 naive-ui 主题色近似），明暗主题下均可读，不引入 `useThemeVars`（符合不过度防御）；
+- 灰色说明文字（第三行）保留不动。
+
+#### 影响范围
+
+- 仅 `Dashboard.vue`：`engineTag` computed 扩展 + 同步引擎卡片模板；
+- 不影响「操作中心」卡片（暂停/开启开关、立即同步按钮）与「统计概览」卡片；
+- 三态判断逻辑（`running`/`enabled`）不变。
+
+#### 备选方案（已对比，未采纳）
+
+| 备选 | 说明 | 未采纳理由 |
+|------|------|-----------|
+| 保留 NTag 移除大字 | NTag 自带颜色背景语义 | 用户已确认移除带色小标签、保留大字主状态 |
+| 两处均保留但去背景 | NTag 改 text 型（无背景） | 仍属重复展示，不满足去重目标 |
+
+#### 风险
+
+| 风险 | 等级 | 缓解 |
+|------|------|------|
+| 大字硬编码色值在暗色主题下可读性 | 🟢 低 | 三个色值在明暗背景均可达对比度要求（内部工具从简，不引入主题变量） |
+| 移除 NTag 后状态辨识度下降 | 🟢 低 | 大字 28px + 状态色补偿，辨识度不降反升 |
+
+---
+
+### 14.2 改进 B：全站 "Dry Run" 更名为「模拟测试」+ 说明文字
+
+#### 现状确认（全站 grep 梳理）
+
+**前端用户可见文案（4 处，需更名）：**
+
+| 位置 | 现文案 | 更名后 |
+|------|--------|--------|
+| `RunTest.vue` L67 | `<NTabPane name="dryrun" tab="Dry Run">` | `tab="模拟测试"` |
+| `RunTest.vue` L70 | 按钮「执行 Dry Run」 | 「执行模拟测试」 |
+| `RunTest.vue` L22/L24 | message「Dry Run 完成 / Dry Run 失败」 | 「模拟测试完成 / 模拟测试失败」 |
+| `DryRunResults.vue` L61 | 「尚未执行 Dry Run，点击上方「执行 Dry Run」开始」 | 「尚未执行模拟测试，点击上方「执行模拟测试」开始」 |
+| `Dashboard.vue` L115 | 「…Dry Run 与连接测试在「运行测试」页使用」 | 「…模拟测试与连接测试在「运行测试」页使用」 |
+
+**无需更改（非用户可见）：**
+
+- API 端点 `POST /api/sync/dryrun`（内部契约，保留）；
+- 代码标识符与内部值：`DryRunResult`/`DryRunResponse`（types.ts）、`useDryRun.ts`、`DryRunResults.vue` 组件名、`runDryRun()` 函数名、`route.query.tab='dryrun'` 与 `name="dryrun"`；
+- 侧边栏菜单「运行测试」（页面名本身无 Dry Run 字样）。
+
+#### 推荐方案（✅ 已确认：前端 UI + 活跃文档；说明文字放标签页副标题）
+
+1. **前端更名**：按上表 5 处用户可见文案统一替换为「模拟测试」；
+2. **说明文字（标签页副标题）**：「模拟测试」Tab 内、操作区上方常驻一行小字：
+
+```
+「模拟测试仅生成变更预览，不实际写入云防火墙规则」
+（实现：font-size 12px、color #888、margin-bottom 12px）
+```
+
+3. **活跃文档同步更名**（仅用户面向描述，技术概念描述保留）：
+
+| 文档 | 位置 | 处理 |
+|------|------|------|
+| `README.md` | L85（SYNC_ENABLED 说明）、L145（运行测试页描述） | Dry Run → 模拟测试 |
+| `AGENTS.md` | L93、L154（同步开关/运行测试页描述） | Dry Run → 模拟测试（API 名 `DryRunResponse` 保留） |
+| `Build4.md` | UI 参考代码中的用户文案（如 Dashboard 说明文字） | 与前端代码同步 |
+| `Design3.md` | 本文档 | 本节省略技术性 Dry Run 引用；若后续实施，相关描述同步 |
+| `Build1-3`/`Issue1-3`/`Design1-2` | 历史归档 | **保持原样**（✅ 已确认，避免历史失真） |
+
+#### 影响范围
+
+- 前端 3 文件（`RunTest.vue`/`DryRunResults.vue`/`Dashboard.vue`）；
+- 活跃文档 3 份（README/AGENTS/Build4）；
+- 后端零改动；API、路由、组件名、类型名全部保留。
+
+#### 备选方案（已对比，未采纳）
+
+| 备选 | 说明 | 未采纳理由 |
+|------|------|-----------|
+| 仅改前端 UI | 文档与 UI 不一致 | 用户已确认同步活跃文档 |
+| 全部文档统一更名 | 含历史归档 | 历史失真、改动量大 |
+
+#### 风险
+
+| 风险 | 等级 | 缓解 |
+|------|------|------|
+| 更名遗漏（grep 不全） | 🟢 低 | 实施前以 grep "Dry Run|DryRun" 全量核对；API/标识符刻意保留处加注释说明 |
+| 文档与代码术语不一致 | 🟢 低 | 文档保留 `DryRunResponse` 等 API 名（与代码一致），仅用户面向描述更名 |
+
+---
+
+### 14.3 改进 C：主题切换按钮可读性增强
+
+#### 现状确认
+
+- `App.vue` 侧边栏标题行右侧：纯 `NSwitch`（无文字、无图标、无提示），用户难以辨识其功能；
+- naive-ui 不内置图标集（项目不引入新依赖）。
+
+#### 推荐方案（✅ 已确认：图标 + tooltip）
+
+- 开关左侧显示随主题切换的 emoji 图标：`theme === 'dark' ? '🌙' : '☀️'`（零依赖 Unicode）；
+- 整体包裹 `NTooltip`，hover 提示「切换明暗主题」；
+- 布局整合：标题行 `display: flex; justify-content: space-between; align-items: center` 已存在，图标 + 开关以内联 span 组合（`display:flex; gap:4px`）替换原 NSwitch，不改变标题行结构；
+- 图标与开关同步切换（`:value="theme === 'dark'"` 同一数据源）。
+
+```
+FWAlizer        ☀️ [开关]   ← 亮色时
+FWAlizer        🌙 [开关]   ← 暗色时
+（hover 任意元素显示「切换明暗主题」）
+```
+
+#### 影响范围
+
+- 仅 `App.vue` 侧边栏标题行；
+- 主题状态与持久化逻辑（`useSettings.setTheme`）不变。
+
+#### 备选方案（已对比，未采纳）
+
+| 方案 | 说明 | 未采纳理由 |
+|------|------|-----------|
+| ① 文字标签「深色/浅色」 | 最明确 | 侧边栏 200px 宽度占用较大 |
+| ③ 仅 hover 提示 | 改动最小 | 无悬停时仍无辨识度 |
+| ① 图标方案（✅ 已选） | 🌙/☀️ emoji + tooltip | 直观、零依赖、占用小 |
+
+#### 风险
+
+| 风险 | 等级 | 缓解 |
+|------|------|------|
+| emoji 跨平台渲染差异 | 🟢 低 | ☀/🌙 为 Unicode 标准字符，主流系统均支持 |
+| tooltip 在窄侧边栏遮挡 | 🟢 低 | NTooltip 默认向上/向下弹出，不影响布局 |
+
+---
+
+### 14.4 改进 D：移除实时运行日志的折叠/展开按钮
+
+#### 现状确认
+
+- `Logs.vue` L105-110（Build4 Step 4 产出）：`NCollapse :default-expanded-names="['logs']"` + `NCollapseItem title="运行日志（实时）" name="logs"` 包裹 `<pre>` 日志面板；
+- 当前默认展开（Build4 已设），但折叠按钮仍可收起日志区，用户需手动保持展开。
+
+#### 推荐方案：移除折叠控件，日志区常驻平铺
+
+```vue
+<!-- 原 NCollapse/NCollapseItem 包装移除，替换为： -->
+<h3 style="margin-top: 16px">运行日志（实时）</h3>
+<pre style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; ...">{{ logLines.join('\n') || '等待日志输出...' }}</pre>
+```
+
+- 标题样式与「历史记录」h3 对齐（统一视觉）；
+- 移除 `NCollapse`/`NCollapseItem` import（避免未使用告警）。
+
+#### 影响评估
+
+| 维度 | 评估 |
+|------|------|
+| 页面布局 | 日志区常驻占位（`max-height: 300px` + 内部滚动），页面整体变长但可滚动，不影响历史记录表格 |
+| 长时间运行 | `logLines` 上限 1000 行（内存受控）+ pre 内部滚动，行数持续增长不影响布局；日志始终可见（用户明确需求） |
+| 明暗主题 | pre 保持深色终端风格，不随主题变化（与 Build4 一致） |
+| SSE 逻辑 | 不变（`/api/logs/stream` 订阅与回放逻辑零改动） |
+
+#### 影响范围
+
+- 仅 `Logs.vue` 模板（NCollapse 包装移除）+ import 清理；
+- 后端零改动。
+
+#### 备选方案（已对比）
+
+| 备选 | 说明 | 未采纳理由 |
+|------|------|-----------|
+| 保留折叠但默认展开 | 现状 | 不满足「移除折叠按钮」需求 |
+| 常驻展开 + 「暂停输出」按钮 | 高日志量时手动暂停渲染 | 超出本次范围，列为可选附项（同 §13.4-B） |
+
+#### 风险
+
+| 风险 | 等级 | 缓解 |
+|------|------|------|
+| 页面纵向空间增加 | 🟢 低 | 300px 固定高度 + 滚动，其他区块不受挤压 |
+| 日志量超前端渲染性能 | 🟢 低 | 1000 行上限 + 虚拟滚动需求低（内部工具），可接受 |
+
+---
+
+### 14.5 汇总（后续实施建议）
+
+| 改进 | 涉及文件 | 依赖 | 备注 |
+|------|---------|------|------|
+| A 状态去重 | `Dashboard.vue` | 无 | 纯前端微调 |
+| B Dry Run 更名 | `RunTest.vue`/`DryRunResults.vue`/`Dashboard.vue`/README/AGENTS/Build4 | 无 | 说明文字副标题 |
+| C 主题按钮 | `App.vue` | 无 | emoji + tooltip |
+| D 日志常驻 | `Logs.vue` | 无 | 移除 NCollapse |
+
+四项均无相互依赖、无后端改动，可合并为一次小型前端构建（后续 Build 文档承接）；实施后统一执行 `npm run build` 验收。

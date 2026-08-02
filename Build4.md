@@ -9,7 +9,7 @@
 > **执行原则（与 Build1-3 一致）：**
 > - 每一步完成后均可编译、可测试。不跳步、不并行多步。
 > - AI 执行指令：每次仅执行一个 Step，完成后运行验收命令，确认通过后再进入下一步。
-> - **排序原则：先修复后构建、先安全后优化、先依赖后独立**——Step 1-3 为后端数据/日志修复阶段（计数链路 → 日志流 → 清空端点），Step 4-7 为前端构建阶段（日志页 → 主题 → 仪表盘 → 细节），Step 8 为文档同步。
+> - **排序原则：先修复后构建、先安全后优化、先依赖后独立**——Step 1-3 为后端数据/日志修复阶段（计数链路 → 日志流 → 清空端点），Step 4-7 为前端构建阶段（日志页 → 主题 → 仪表盘 → 细节），Step 8 为文档同步；Step 9-13 为后续细节优化阶段（Design3 §十四 四项改进：状态去重 → 主题按钮 → 日志常驻 → Dry Run 更名 → 全量回归）。
 > - 每步的新增逻辑必须配套单元测试（用户决策）。
 
 ---
@@ -26,6 +26,11 @@
 | 6 | 仪表盘 2×2 大卡片重设计 + 移除运行测试链接 + 首次使用引导 | Design3 §六/§9.1 | ✅ 验收通过（2026-08-02：npm run build 零错误；四卡等高/大字体大按钮/引导条） |
 | 7 | 规则页「适用目标」中文云产品名 + 目标页 Keys 缺失提示 | Design3 §9.2 | ✅ 验收通过（2026-08-02：npm run build 零错误；cloudLabelMap 中文名 + NAlert 提示条） |
 | 8 | 文档同步（AGENTS.md 文档体系 / Design3.md 引用） | Design3 §13.1 | ✅ 验收通过（2026-08-02：全量回归 go build/vet/test -race + npm run build 全绿；文档链接核验无残留） |
+| 9 | 同步引擎状态显示去重（移除 NTag + 大字上色） | Design3 §14.1 | ✅ 验收通过（2026-08-02：npm run build 零错误；NTag 移除、大字上色、import 清理） |
+| 10 | 主题切换按钮可读性增强（🌙/☀️ 图标 + tooltip） | Design3 §14.3 | ✅ 验收通过（2026-08-02：npm run build 零错误；☀️/🌙 图标随主题切换 + NTooltip 提示） |
+| 11 | 移除实时运行日志折叠/展开按钮（常驻平铺） | Design3 §14.4 | ✅ 验收通过（2026-08-02：npm run build 零错误；NCollapse 移除、日志常驻平铺） |
+| 12 | 全站 "Dry Run" 更名「模拟测试」+ 副标题说明 + 活跃文档同步 | Design3 §14.2 | ✅ 验收通过（2026-08-02：npm run build 零错误；grep 核对仅剩注释/标识符；README/AGENTS/Build4 同步） |
+| 13 | 全量回归与收尾（更名遗漏核对 + 变更记录） | Design3 §14.5 | ✅ 验收通过（2026-08-02：全量回归 go build/vet/test -race + npm run build 全绿；更名核对通过；变更记录 v1.3） |
 
 > 状态标记：☐ 未开始 / ◧ 进行中 / ✅ 验收通过
 
@@ -43,6 +48,11 @@
 | 6 | `webui/frontend/src/views/Dashboard.vue` | 2×2 大卡片（引擎状态/上次同步/统计概览/操作中心）；移除运行测试链接；首次引导 NAlert |
 | 7 | `webui/frontend/src/views/Rules.vue`、`webui/frontend/src/views/Targets.vue` | `cloudLabelMap` 中文名；凭据状态缓存 + `watch(cloud_type)` 提示条（不阻止保存） |
 | 8 | `AGENTS.md`、`Design3.md` | 文档体系表与引用更新（Build4 为当前，Build3 转历史归档） |
+| 9 | `webui/frontend/src/views/Dashboard.vue` | `engineTag` 扩展 `{text, color}`；移除 NTag；28px 大字上状态色（运行中绿/已暂停橙/已停止灰） |
+| 10 | `webui/frontend/src/App.vue` | 主题开关前加 🌙/☀️ emoji（随主题切换）+ `NTooltip`「切换明暗主题」；import 增 `NTooltip` |
+| 11 | `webui/frontend/src/views/Logs.vue` | 移除 `NCollapse`/`NCollapseItem` 包装与 import；日志区改 h3 + pre 常驻平铺 |
+| 12 | `RunTest.vue`、`DryRunResults.vue`、`Dashboard.vue`、`README.md`、`AGENTS.md`、`Build4.md`（本文件） | 用户可见 "Dry Run" 文案更名「模拟测试」；Tab 内副标题说明；README L85/L145 与 AGENTS L93/L154 同步；API/标识符/历史文档保留 |
+| 13 | 全量回归 | `npm run build` + `go build`/`go test -race` 确认；grep 核对更名无遗漏；变更记录 v1.3 |
 
 ---
 
@@ -55,6 +65,13 @@ Step 3 (清空端点) ────────┘        （前端验收依赖 S
 Step 5 (useSettings + 主题) ──→ Step 6 (仪表盘: 复用 useSettings 引导)
                           └──→ Step 7 (Rules/Targets: 复用 useSettings 凭据状态)
 Step 8 (文档同步) ── 依赖 Step 1-7 全部验收通过后
+
+—— 后续细节优化阶段（Design3 §十四，四项相互独立、无后端改动）——
+Step 9 (A 状态去重: Dashboard.vue) ──┐
+Step 10 (C 主题按钮: App.vue) ────────┼─ 相互独立，按编号线性执行
+Step 11 (D 日志常驻: Logs.vue) ───────┤
+Step 12 (B 更名+说明+文档) ───────────┘ （同文件顺序编辑：Dashboard.vue 状态区在 Step 9，说明文字在 Step 12）
+Step 13 (全量回归 + 收尾) ── 依赖 Step 9-12 全部验收通过后
 ```
 
 **关键约束：**
@@ -1217,7 +1234,7 @@ onUnmounted(() => {
           <div style="margin-top: 12px">
             <NTag :type="engineTag.type" size="large" :bordered="false">{{ engineTag.text }}</NTag>
           </div>
-          <div style="font-size: 13px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；Dry Run 与连接测试在「运行测试」页使用</div>
+          <div style="font-size: 13px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；模拟测试与连接测试在「运行测试」页使用</div>
         </NCard>
       </NGi>
       <NGi>
@@ -1442,6 +1459,249 @@ grep -rn "当前构建方案见 \[Build3" *.md || echo "OK: 无残留引用"
 
 ---
 
+### Step 9：同步引擎状态显示去重（改进 A）
+
+**目标：** 移除 `Dashboard.vue` 同步引擎卡片中的 `NTag` 重复状态展示，保留 28px 大字并赋予状态色（Design3 §14.1，用户已确认：移除 NTag + 大字上色）。
+
+**前置条件：** Step 6 完成（2×2 卡片已就位）
+
+**产出文件与操作：** `webui/frontend/src/views/Dashboard.vue`
+
+#### 9.1 `engineTag` computed 扩展（script 部分）
+
+```typescript
+// 三态标签：同步引擎状态（唯一展示：28px 大字 + 状态色；Build4 Step 9 去重）
+const engineTag = computed(() => {
+  if (!status.value.running) return { text: '已停止', color: '#808080' }
+  return status.value.enabled
+    ? { text: '运行中', color: '#18a058' }
+    : { text: '已暂停', color: '#f0a020' }
+})
+```
+
+#### 9.2 模板：移除 NTag，大字上色
+
+```vue
+<NCard title="同步引擎" style="min-height: 200px">
+  <div :style="{ fontSize: '28px', fontWeight: 600, marginTop: '20px', color: engineTag.color }">{{ engineTag.text }}</div>
+  <!-- NTag 已移除（Build4 Step 9：状态显示去重，唯一展示） -->
+  <div style="font-size: 13px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；模拟测试与连接测试在「运行测试」页使用</div>
+</NCard>
+```
+
+要点：
+- 说明文字中的 "Dry Run" 字样**本步保持原样**，由 Step 12 统一更名（避免跨步提前引入）；
+- 颜色硬编码（与 naive-ui 主题色近似），明暗主题下均可读；
+- 三态判断逻辑（`running`/`enabled`）不变。
+
+#### 9.3 import 清理
+
+`naive-ui` import 中移除 `NTag`（卡片内已无使用，避免 vue-tsc 未使用告警）：
+
+```typescript
+import { NCard, NGrid, NGi, NButton, NAlert, NTooltip, NSpace, useMessage } from 'naive-ui'
+```
+
+**测试与验收：**
+```bash
+cd webui/frontend && npm run build
+# 手工验证：同步引擎卡片仅一处状态文本（大字 + 状态色：运行中绿/已暂停橙/已停止灰）；
+# 操作中心（暂停/开启开关、立即同步按钮）与统计概览卡片不受影响
+```
+
+---
+
+### Step 10：主题切换按钮可读性增强（改进 C）
+
+**目标：** `App.vue` 侧边栏主题开关增加 🌙/☀️ 图标（随主题切换）与 `NTooltip` 提示「切换明暗主题」（Design3 §14.3，用户已确认：图标 + tooltip，零新依赖）。
+
+**前置条件：** Step 5 完成（`useSettings` 主题状态）
+
+**产出文件与操作：** `webui/frontend/src/App.vue`
+
+#### 10.1 import 增加 `NTooltip`
+
+```typescript
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, NSwitch, NTooltip } from 'naive-ui'
+```
+
+#### 10.2 标题行：图标 + 开关 + tooltip
+
+```vue
+<div style="padding: 16px 16px 0; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center">
+  <span>FWAlizer</span>
+  <!-- 主题切换：图标 + tooltip（Build4 Step 10：可读性增强） -->
+  <NTooltip>
+    <template #trigger>
+      <span style="display: flex; align-items: center; gap: 4px; cursor: pointer">
+        <span style="font-size: 16px">{{ theme === 'dark' ? '🌙' : '☀️' }}</span>
+        <NSwitch size="small" :value="theme === 'dark'" @update:value="(v: boolean) => setTheme(v ? 'dark' : 'light')" />
+      </span>
+    </template>
+    切换明暗主题
+  </NTooltip>
+</div>
+```
+
+要点：图标与开关同一数据源（`theme === 'dark'`），切换同步；`useSettings.setTheme` 持久化逻辑零改动。
+
+**测试与验收：**
+```bash
+cd webui/frontend && npm run build
+# 手工验证：亮色显示 ☀️、暗色显示 🌙；hover 任意元素弹出「切换明暗主题」；
+# 切换后主题即时生效且 DB 持久化（重启保持）
+```
+
+---
+
+### Step 11：移除实时运行日志折叠/展开按钮（改进 D）
+
+**目标：** `Logs.vue` 移除 `NCollapse`/`NCollapseItem` 包装，日志区常驻平铺、始终可读（Design3 §14.4）。
+
+**前置条件：** Step 4 完成（日志页重排）
+
+**产出文件与操作：** `webui/frontend/src/views/Logs.vue`
+
+#### 11.1 import 移除 `NCollapse`/`NCollapseItem`
+
+```typescript
+import { NDataTable, NTag, NModal, NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui'
+```
+
+#### 11.2 模板：折叠控件替换为常驻标题 + 面板
+
+```vue
+<!-- 实时运行日志（常驻展开，Build4 Step 11：移除折叠控件） -->
+<h3 style="margin-top: 16px">运行日志（实时）</h3>
+<pre style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;">{{ logLines.join('\n') || '等待日志输出...' }}</pre>
+```
+
+要点：
+- 标题样式与「历史记录」h3 对齐（统一视觉）；
+- `max-height: 300px` + 内部滚动 + `logLines` 上限 1000 行：行数持续增长不影响页面布局；
+- SSE 订阅与回放逻辑（`/api/logs/stream`）零改动。
+
+**测试与验收：**
+```bash
+cd webui/frontend && npm run build
+# 手工验证：日志区无折叠按钮、始终展开；长时间运行（>1000 行）时内部滚动正常、历史记录表格不受挤压
+```
+
+---
+
+### Step 12：全站 "Dry Run" 更名「模拟测试」+ 说明文字（改进 B）
+
+**目标：** 用户可见文案统一更名「模拟测试」，并新增副标题说明「仅生成变更预览，不实际写入云防火墙规则」；同步活跃文档（Design3 §14.2，用户已确认：前端 UI + 活跃文档，历史归档保留）。
+
+**前置条件：** Step 9 完成（同文件 `Dashboard.vue` 顺序编辑：状态区在 Step 9 已改，本步仅改说明文字行）
+
+**产出文件与操作：**
+
+#### 12.1 `webui/frontend/src/views/RunTest.vue`
+
+| 位置 | 原文案 | 更名后 |
+|------|--------|--------|
+| Tab 标题 | `tab="Dry Run"` | `tab="模拟测试"` |
+| 执行按钮 | 「执行 Dry Run」 | 「执行模拟测试」 |
+| 完成提示 | `'Dry Run 完成'` | `'模拟测试完成'` |
+| 失败提示 | `` `Dry Run 失败: ${e.message}` `` | `` `模拟测试失败: ${e.message}` `` |
+
+**副标题（Tab 1 内、操作区上方插入）：**
+
+```vue
+<NTabPane name="dryrun" tab="模拟测试">
+  <NSpace vertical>
+    <!-- 说明文字（Build4 Step 12：模拟测试语义） -->
+    <div style="font-size: 12px; color: #888; margin-bottom: 4px">模拟测试仅生成变更预览，不实际写入云防火墙规则</div>
+    <NSpace align="center">
+      <NButton type="primary" :loading="loading" @click="runDryRun">执行模拟测试</NButton>
+      ...
+```
+
+内部标识符保留：`name="dryrun"`、`runDryRun()`、`route.query.tab='dryrun'`（非用户可见，避免无意义 diff）。
+
+#### 12.2 `webui/frontend/src/components/DryRunResults.vue`
+
+空状态文案（L61）：
+
+```
+尚未执行模拟测试，点击上方「执行模拟测试」开始
+```
+
+#### 12.3 `webui/frontend/src/views/Dashboard.vue`
+
+说明文字（Step 9 已保留原样，本步统一更名）：
+
+```
+开启后按同步间隔自动执行；模拟测试与连接测试在「运行测试」页使用
+```
+
+#### 12.4 活跃文档同步（用户面向描述）
+
+| 文档 | 位置 | 处理 |
+|------|------|------|
+| `README.md` | L85「（Dry Run 不受影响）」、L145「统一承载 Dry Run（…）」 | Dry Run → 模拟测试（API 名 `DryRunResponse` 保留） |
+| `AGENTS.md` | L93「Dry Run 与连接测试不受影响」、L154「统一承载 Dry Run 与连接测试（`DryRunResponse{results, warnings}`…）」 | 用户面向描述更名，API 标识符保留 |
+| `Build4.md`（本文件） | Step 6/Step 9 参考代码中的说明文字「Dry Run 与连接测试在「运行测试」页使用」 | 同步为「模拟测试与连接测试在「运行测试」页使用」 |
+
+**保留清单（刻意不更名）：**
+
+- API 端点 `POST /api/sync/dryrun`；
+- 代码标识符：`DryRunResult`/`DryRunResponse`（types.ts）、`useDryRun.ts`、`DryRunResults.vue` 组件名、`runDryRun()`、`name="dryrun"`、`route.query.tab='dryrun'`；
+- 历史归档文档：Build1-3、Issue1-3、Design1-2（✅ 已确认，避免历史失真）。
+
+**测试与验收：**
+```bash
+cd webui/frontend && npm run build
+# 1. grep -rn "Dry Run" webui/frontend/src 应仅剩注释/代码标识符（无用户可见文案）
+grep -rn "Dry Run" webui/frontend/src || echo "OK: 无用户可见 Dry Run 文案"
+# 2. README/AGENTS 用户面向描述已同步（grep -n "模拟测试" README.md AGENTS.md）
+```
+
+---
+
+### Step 13：全量回归与收尾
+
+**目标：** 确认 Step 9-12 改动后整体构建与测试全绿，核对更名无遗漏，更新变更记录（Design3 §14.5）。
+
+**前置条件：** Step 9-12 全部验收通过
+
+**产出文件与操作：**
+
+#### 13.1 全量回归
+
+```bash
+# 后端（Step 9-12 为纯前端改动，回归确认不受影响）
+go build ./... && go vet ./... && go test ./... -race
+# 前端生产构建（vue-tsc 类型检查 + vite）
+cd webui/frontend && npm run build
+```
+
+#### 13.2 更名遗漏核对
+
+```bash
+# 用户可见文案应无 "Dry Run" 残留（注释/标识符允许）
+grep -rn "Dry Run" webui/frontend/src || echo "OK: 无用户可见 Dry Run 文案"
+# 活跃文档核对
+grep -n "模拟测试" README.md AGENTS.md
+```
+
+#### 13.3 变更记录
+
+`Build4.md` 变更记录追加：
+
+```
+| v1.3 | 2026-08-02 | 追加 Step 9-13（Design3 §十四 四项细节改进：状态去重 / 主题按钮 / 日志常驻 / Dry Run 更名），全量回归通过 |
+```
+
+**测试与验收：**
+```bash
+cd /path/to/repo && go build ./... && go vet ./... && go test ./... -race && cd webui/frontend && npm run build
+# 全部通过即 Step 9-13 整体验收完成
+```
+
+---
+
 ## 五、验收总览（对应 Design3 十二项改进）
 
 | 改进 | 验收要点 | 构建步骤 |
@@ -1458,6 +1718,10 @@ grep -rn "当前构建方案见 \[Build3" *.md || echo "OK: 无残留引用"
 | 10 清空记录 | 确认后历史清空，其他数据不受影响 | Step 3 + 4 |
 | 11 首次引导 | 无凭据时仪表盘顶部引导条，「去配置」跳转；配置后消失 | Step 5 + 6 |
 | 12 Keys 提示 | 目标弹窗选择未配凭据平台时提示，保存不阻止；测试连接后端快速失败保留 | Step 5 + 7 |
+| A 状态去重 | 同步引擎卡片仅一处状态展示（大字 + 状态色），无 NTag；三态颜色正确 | Step 9 |
+| B 更名+说明 | 全站用户可见无 "Dry Run" 字样；Tab 副标题「仅生成变更预览，不实际写入云防火墙规则」可见；README/AGENTS 同步 | Step 12 |
+| C 主题按钮 | ☀️/🌙 图标随主题切换；hover 提示「切换明暗主题」 | Step 10 |
+| D 日志常驻 | 无折叠按钮、日志区常驻展开；1000 行内部滚动正常 | Step 11 |
 
 ---
 
@@ -1471,6 +1735,9 @@ grep -rn "当前构建方案见 \[Build3" *.md || echo "OK: 无残留引用"
 | 主题键触发热重载 | 🟢 低 | `theme` 键不被 `LoadConfig()` 使用 | 已确认 `config.go` 不解析该键，无副作用 |
 | 删除实时事件版块信息丢失 | 🟢 低 | 事件信息由历史记录 + 运行日志覆盖（Design3 §7.2） | 后端 `/api/sync/events` 端点保留，可复用 |
 | 前端 `load` 函数与 useSettings 重名 | 🟢 低 | `Targets.vue` 原 `load` 与 composable 的 `load` 冲突 | 解构重命名 `refresh: refreshSettings`（Step 7 已注明） |
+| `Dashboard.vue` 双 Step 顺序编辑 | 🟢 低 | Step 9 改状态区、Step 12 改说明文字行，区域不重叠 | Step 9 → 12 按序执行，`npm run build` 兜底 |
+| 更名遗漏（用户可见文案） | 🟢 低 | 文案分散于 3 个前端文件 + 2 份活跃文档 | Step 12 验收 grep + Step 13 二次核对 |
+| 大字硬编码色值暗色可读性 | 🟢 低 | 三态色在明暗背景均可达对比度要求 | 内部工具从简，不引入主题变量 |
 
 ---
 
@@ -1481,4 +1748,5 @@ grep -rn "当前构建方案见 \[Build3" *.md || echo "OK: 无残留引用"
 | v1.0 | 2026-08-02 | 依据 Design3.md 生成初始构建方案（Step 1-8） |
 | v1.1 | 2026-08-02 | 深度核验修正：① Step 1 测试补 `filterIPv4`（localhost 解析含 ::1，与 syncDomain 实际路径一致）；② Step 2 三个测试修正（中文消息被 TextHandler 加引号、LevelFilter 须经 slog.Logger 走 Enabled 检查）；③ Step 5 `useSettings` 增加 `refresh()` 强制拉取，Step 6 引导 / Step 7 提示改用 `refresh`（解决"设置页配置凭据后返回页面仍显示旧提示"） |
 | v1.2 | 2026-08-02 | **构建完成**：Step 1-8 全部验收通过（后端 build/vet/test -race 全绿，前端 npm run build 零错误，全量回归通过） |
+| v1.3 | 2026-08-02 | **构建完成**：追加 Step 9-13（Design3 §十四 四项细节改进：状态去重 / 主题按钮 / 日志常驻 / Dry Run 更名「模拟测试」），全量回归通过 |
 

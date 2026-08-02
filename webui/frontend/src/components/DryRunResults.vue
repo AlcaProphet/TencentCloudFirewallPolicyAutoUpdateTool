@@ -58,7 +58,7 @@ function emptyChange(): RuleChange[] {
   <div>
     <!-- 空状态（按优先级） -->
     <NAlert v-if="!hasRun" type="info" :show-icon="false">
-      尚未执行 Dry Run，点击上方「执行 Dry Run」开始
+      尚未执行模拟测试，点击上方「执行模拟测试」开始
     </NAlert>
 
     <template v-else>
