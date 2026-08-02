@@ -1,5 +1,8 @@
 # FWAlizer Docker Compose 示例
 # 复制此文件为 docker-compose.yml 并根据需要修改
+#
+# ⚠️ 默认推荐 WebUI 模式（浏览器可视化管理，配置存于 SQLite）；
+#    .env 模式为备用/进阶/极简模式（挂载 .env，见下方注释）。
 
 services:
   fwalizer:
@@ -64,8 +67,9 @@ services:
     restart: unless-stopped
 
     # ---- 运行模式说明 ----
-    # 默认启动为 WebUI 模式（无 .env 文件时自动检测）
-    # 如需 .env 模式，取消注释 volumes 中的 .env 挂载并注释 ports
+    # 默认（上方配置）为 WebUI 模式（推荐）：浏览器访问 http://127.0.0.1:60200 完成全部配置
+    # .env 模式（备用/进阶）：取消注释下方 volumes 中的 .env 挂载并注释 ports，
+    # 需在 ./config/.env 提供 TARGETS/RULES/凭据等（模板见 .env.example）
 
 volumes:
   fwalizer_data:

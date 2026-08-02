@@ -1,5 +1,7 @@
 # FWAlizer 设计大纲（Design1）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > 面向人类的架构设计与决策文档。技术实现细节见 [Build1.md](./Build1.md)，AI 编码指令见 [AGENTS.md](./AGENTS.md)。
 
 ---

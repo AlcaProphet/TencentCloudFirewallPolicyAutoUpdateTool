@@ -1,5 +1,7 @@
 # FWAlizer 功能构建计划（Build4：WebUI 体验优化 + 同步日志修复）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > **文档定位：** 本文档是「WebUI 体验优化 + 同步日志修复」（[Design3.md](./Design3.md) 十二项改进）的**当前构建方案**（依据 AGENTS.md §12.1：Build 文档为详细构建方案，非强规则）。
 > - 设计构想：[Design3.md](./Design3.md)（十二项改进的根因分析、方案与验收标准；与 AGENTS.md 或用户决策冲突时以用户确认为准）
 > - 架构参考：[Design1.md](./Design1.md) / [Design2.md](./Design2.md)（历史设计构想，均已归档）

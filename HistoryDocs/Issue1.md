@@ -1,5 +1,7 @@
 # FWAlizer 构建与深度审查问题记录（历史归档）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > 本文档归档第1-10轮审查历史问题。**第11-12轮审查及当前修复状态追踪以 [Issue2.md](./Issue2.md) 为准。**
 > 以下所有状态均以 Issue2.md 第11-12轮逐文件核查结果为最终确认。
 

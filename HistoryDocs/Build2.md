@@ -1,5 +1,7 @@
 # FWAlizer 问题修复与功能构建（Build2 · 历史归档）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > **⚠️ 本文档为历史归档。** 全部 11 个构建 Step 已于 2026-07-27 验收通过。
 > 最终验收详情见 [Issue3.md 全量复核记录](./Issue3.md#全量复核记录)。
 >

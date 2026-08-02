@@ -1,7 +1,7 @@
 # AGENTS.md — FWAlizer AI 编码指令
 
 > 本文档是给 AI 编码助手的指令集，也是项目**唯一的强要求文档**（详见「十二、文档体系与优先级」）。
-> 项目设计方向见 [Design1.md](./Design1.md)、[Design2.md](./Design2.md) 与 [Design3.md](./Design3.md)（设计构想，非强制），当前构建方案见 [Build4.md](./Build4.md)，历史构建与问题记录见 [Build1.md](./Build1.md)、[Build2.md](./Build2.md)、[Build3.md](./Build3.md)、[Issue1.md](./Issue1.md)、[Issue2.md](./Issue2.md)、[Issue3.md](./Issue3.md)。
+> 项目设计方向见 [Design4.md](./Design4.md)（设计记录，当前），当前构建方案见 [Build5.md](./Build5.md)，当前问题记录见 [Issue4.md](./Issue4.md)；历史文档（Design1-3、Build1-4、Issue1-3）已移入 [HistoryDocs/](./HistoryDocs/)（已存档，仅记录，不再用于构建，仅用于核查等情况）。
 
 ---
 
@@ -9,7 +9,7 @@
 
 - **模块路径**：`github.com/alcaprophet/fwalizer`
 - **Go 版本**：`go 1.25`
-- **文档定位与优先级**：编码前先阅读本文件（强要求）。设计构想见 [Design1.md](./Design1.md)、[Design2.md](./Design2.md) 与 [Design3.md](./Design3.md)（非强制，供参考）；详细构建方案见 [Build4.md](./Build4.md)（当前）与 [Build1.md](./Build1.md)、[Build2.md](./Build2.md)、[Build3.md](./Build3.md)（历史归档）；错误与修复记录见 [Issue1.md](./Issue1.md)、[Issue2.md](./Issue2.md)、[Issue3.md](./Issue3.md)（历史归档）
+- **文档定位与优先级**：编码前先阅读本文件（强要求）。设计记录见 [Design4.md](./Design4.md)（当前，非强制，供参考）；详细构建方案见 [Build5.md](./Build5.md)（当前）；当前问题记录见 [Issue4.md](./Issue4.md)；历史文档（Design1-3、Build1-4、Issue1-3）见 [HistoryDocs/](./HistoryDocs/)（已存档，仅记录，不再用于构建，仅用于核查等情况）
 
 ---
 
@@ -53,13 +53,13 @@
 ## 三、防火墙规则操作约束
 
 - **绝不**使用全量覆盖类 API（如 Lighthouse 的 `ModifyFirewallRules`、CVM 的“重置安全组规则”），会误删非本工具管理的规则
-- **只用**增量添加 + 精确删除（各云对应 API 详见 Build1.md 第五节）
+- **只用**增量添加 + 精确删除（各云对应 API 详见 HistoryDocs/Build1.md 第五节）
 - 所有由本工具创建的规则，通过对应的描述字段标记，格式：
   ```
   [TAG] comment
   ```
   示例：`[auto-dns] 生产API`
-- 不同云厂商的规则标识字段不同（详见 Build1.md），均以 `[TAG]` 前缀识别
+- 不同云厂商的规则标识字段不同（详见 HistoryDocs/Build1.md），均以 `[TAG]` 前缀识别
 - 删除时“规则已不存在”视为成功（幂等），不报错
 - 添加时“规则已存在”视为成功，WARN 日志并跳过
 - 支持协议：TCP / UDP / TCP+UDP / **ICMP**（ICMP 时端口由各 Provider 按 API 要求处理：Lighthouse 传 ALL，阿里云传 -1/-1，CVM 省略 Port 字段）
@@ -105,7 +105,7 @@
 
 ## 七、API 频率限制
 
-- 不同云厂商频率限制不同，取对应间隔（详见 Build1.md）
+- 不同云厂商频率限制不同，取对应间隔（详见 HistoryDocs/Build1.md）
 - 同一云厂商内串行处理（共享配额），域名之间加入间隔
 - 不同云厂商可并行同步（API 配额独立）
 
@@ -146,7 +146,7 @@
 - 日志使用 `log/slog`（Go 1.21+ 内置结构化日志）
 - 注释使用**中文**（面向国内开发者）
 - 遵守 `Documents/` 中的 API 文档要求（参数格式、字段长度限制、频率限制）
-- 多云抽象基于 Provider 接口 + 工厂注册模式（详见 Build1.md）
+- 多云抽象基于 Provider 接口 + 工厂注册模式（详见 HistoryDocs/Build1.md）
 - 桌面端系统托盘功能**已搁置**（代码归档至 `desktop/`，详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)）
 - 日志多路复用器 `MultiHandler` 统一定义在 `app/logutil.go`（消除与 `webui/api/logstream.go` 的重复）
 - WebUI 模式通过 pidfile（`config/pidfile.go` + 平台文件）防止多实例运行
@@ -162,9 +162,9 @@
 | 文档类型 | 文件 | 定位 | 约束力 |
 |---------|------|------|--------|
 | **强要求** | **AGENTS.md（本文件）** | AI 编码指令与约束 | **唯一强要求，尽量不违背** |
-| 设计构想 | [Design1.md](./Design1.md) / [Design2.md](./Design2.md) / [Design3.md](./Design3.md) | 设计大方向、架构构想、决策记录 | 非强制，供参考 |
-| 构建方案 | [Build1.md](./Build1.md) / [Build2.md](./Build2.md) / [Build3.md](./Build3.md)（历史归档）、[Build4.md](./Build4.md)（当前） | 详细的分步构建方案与验收命令 | 非强制，执行建议 |
-| 问题记录 | [Issue1.md](./Issue1.md) / [Issue2.md](./Issue2.md) / [Issue3.md](./Issue3.md)（历史归档） | 记录的错误与修复方案 | 非强制，经验参考 |
+| 设计构想 | [Design4.md](./Design4.md)（当前）；历史：[HistoryDocs/](./HistoryDocs/)（Design1-3 已存档） | 设计大方向、架构构想、决策记录 | 非强制，供参考 |
+| 构建方案 | [Build5.md](./Build5.md)（当前）；历史：[HistoryDocs/](./HistoryDocs/)（Build1-4 已存档） | 详细的分步构建方案与验收命令 | 非强制，执行建议 |
+| 问题记录 | [Issue4.md](./Issue4.md)（当前）；历史：[HistoryDocs/](./HistoryDocs/)（Issue1-3 已存档） | 记录的错误与修复方案 | 非强制，经验参考 |
 
 **执行规则：**
 
@@ -172,21 +172,26 @@
 - **Design 文档**描述设计大方向与构想；**Build 文档**描述详细的构建方案；**Issue 文档**记录错误与修复方案
 - 若 Design / Build / Issue 文档之间存在冲突，或与 AGENTS.md 冲突：**提示用户并让用户做决策**，不擅自选择遵守哪一份
 - 若构想本身存在冲突，同样**提示用户**，由用户决策
-- Design1.md 等设计文档中的内容不是强制性规定，仅是设计类构想
+- Design 文档（如 [Design4.md](./Design4.md)）中的内容不是强制性规定，仅是设计类构想
 
 ### 12.2 文档清单
 
 | 文档 | 目标读者 | 内容 | 状态 |
 |------|---------|------|------|
 | AGENTS.md（本文件） | AI 编码助手 | 编码指令与约束（**唯一强要求**） | 活跃 |
-| [Design1.md](./Design1.md) | 人类（开发者/用户） | 架构设计、需求、决策、路线图（设计构想） | 活跃 |
-| [Design2.md](./Design2.md) | 人类（开发者/用户） | 同步全局开关 + 运行测试页设计（设计构想） | 活跃 |
-| [Design3.md](./Design3.md) | 人类（开发者/用户） | WebUI 体验优化与同步日志修复设计（设计构想） | 活跃 |
-| [Build4.md](./Build4.md) | 开发者 | 当前构建方案：WebUI 体验优化 + 同步日志修复（Step 1-8） | 活跃 |
-| [Build3.md](./Build3.md) | 开发者 | 同步全局开关 + 运行测试页构建（Step 1-13，已全部验收通过） | 历史归档 |
-| [Build1.md](./Build1.md) | 开发者 | 原始构建计划与技术实现细节（Step 1-16，已全部完成，技术参考） | 历史归档 |
-| [Build2.md](./Build2.md) | 开发者 | 修复与功能构建计划（Step 1-11，已全部验收通过） | 历史归档 |
-| [Issue3.md](./Issue3.md) | 开发者 | 第13-15轮审查问题与修复记录 | 历史归档 |
-| [Issue2.md](./Issue2.md) | 开发者 | 第11-12轮审查问题与合规验证记录 | 历史归档 |
-| [Issue1.md](./Issue1.md) | 开发者 | 第1-10轮审查历史问题精简归档 | 历史归档 |
+| [Design4.md](./Design4.md) | 人类（开发者/用户） | 当前设计记录：功能全景、设计决策记录、后续候选（设计构想） | 活跃 |
+| [Build5.md](./Build5.md) | 开发者 | 当前构建方案：文档体系重构（Step 1）+ 候选构建项 | 活跃 |
+| [Issue4.md](./Issue4.md) | 开发者 | 当前问题追踪：进行中问题 + 已知遗留/候选事项 | 活跃 |
 | [FutureDesktopDevelop.md](./FutureDesktopDevelop.md) | 开发者 | 桌面端功能搁置记录与后续重启思路 | 归档 |
+| [HistoryDocs/](./HistoryDocs/) | 开发者 | Build1-4、Issue1-3、Design1-3 共 10 份历史文档（已存档，仅记录，不再用于构建，仅用于核查等情况） | 已存档 |
+
+### 12.3 API 使用要求文档（Documents/）
+
+仓库 `Documents/` 目录存放各云平台 **API 使用要求** 文档（参数格式、字段长度限制、频率限制等），编码前查阅：
+
+| 目录 | 内容 |
+|------|------|
+| `Documents/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
+| `Documents/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
+| `Documents/AliyunSASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
+| `Documents/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |

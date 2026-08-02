@@ -1,5 +1,7 @@
 # FWAlizer 技术实现细节（Build1 · 历史归档）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > **⚠️ 本文档为历史归档。** 全部 16 个构建 Step 已于第10轮审查前完成。
 > 当前修复与构建计划请参见 [Build2.md](./Build2.md)，问题追踪请参见 [Issue2.md](./Issue2.md)。
 >
