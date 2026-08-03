@@ -7,6 +7,13 @@ export interface TargetConfig {
   resource_id: string
 }
 
+// ZoneRegion 地域及其可用区（GET /api/zones，地域自动补全数据源）
+export interface ZoneRegion {
+  id: string
+  name: string
+  zones: string[]
+}
+
 export interface DomainRule {
   id: number
   host: string

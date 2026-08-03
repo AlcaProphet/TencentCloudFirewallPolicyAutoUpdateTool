@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 运行测试页：Dry Run + 连接测试双标签（激活状态与路由 query 同步 ?tab=dryrun|connection）
 import { NTabs, NTabPane, NButton, NSelect, NInput, NSpace, useMessage } from 'naive-ui'
-import { ref, watch } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DryRunResults from '../components/DryRunResults.vue'
 import { useDryRun } from '../composables/useDryRun'
+import { useZones } from '../composables/useZones'
 import { request } from '../api'
-import { cloudOptions } from '../constants'
+import { cloudOptions, resourceIdHint } from '../constants'
 import type { TestConnectionResult } from '../types'
 
 const message = useMessage()
@@ -29,6 +30,18 @@ async function runDryRun() {
 const testForm = ref({ cloud_type: 'tc_lighthouse', region: '', resource_id: '' })
 const testResult = ref('')
 const testLoading = ref(false)
+
+// 地域自动补全：预填建议 + 允许输入任意值（与 Targets.vue 一致）
+const { load: loadZones, regionOptions } = useZones()
+const regionOpts = computed(() => {
+  const opts = regionOptions(testForm.value.cloud_type)
+  const cur = testForm.value.region
+  if (cur && !opts.some((o) => o.value === cur)) {
+    opts.push({ label: cur, value: cur })
+  }
+  return opts
+})
+onMounted(loadZones)
 
 async function testConnection() {
   testLoading.value = true
@@ -81,8 +94,15 @@ watch(activeTab, (v) => {
       <NTabPane name="connection" tab="连接测试">
         <NSpace vertical style="max-width: 400px">
           <NSelect v-model:value="testForm.cloud_type" :options="cloudOptions" placeholder="选择云产品" />
-          <NInput v-model:value="testForm.resource_id" placeholder="资源ID（lhins-xxx / sg-xxx）" />
-          <NInput v-model:value="testForm.region" placeholder="地域（ap-guangzhou）" />
+          <NInput v-model:value="testForm.resource_id" :placeholder="resourceIdHint(testForm.cloud_type)" />
+          <NSelect
+            v-model:value="testForm.region"
+            :options="regionOpts"
+            filterable
+            tag
+            clearable
+            placeholder="选择或输入地域 ID（如 ap-guangzhou）"
+          />
           <NButton type="primary" :loading="testLoading" @click="testConnection">测试连接</NButton>
           <p v-if="testResult" style="color: #666">{{ testResult }}</p>
         </NSpace>

@@ -223,8 +223,9 @@ WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令�
 |------|------|
 | `PlatformAPIDocs/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
 | `PlatformAPIDocs/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
-| `PlatformAPIDocs/AliyunSASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
+| `PlatformAPIDocs/AliyunSWASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
 | `PlatformAPIDocs/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |
+| `PlatformAPIDocs/PlatformZoneGuide/` | 各平台地域与可用区指南（地域自动补全数据来源） |
 
 ---
 
@@ -295,7 +296,7 @@ fwalizer/
 ├── webui/                   # WebUI 后端（HTTP API + 前端 embed）
 │   └── frontend/            # Vue 3 + Vite + Naive UI 前端源码
 ├── internal/                # 内部工具（端口转换、标签解析）
-├── PlatformAPIDocs/          # 各云平台 API 使用要求文档
+├── PlatformAPIDocs/          # 各云平台 API 使用要求 + 地域可用区指南文档
 ├── HistoryDocs/             # 历史工程文档（Design1-3/Build1-4/Issue1-3，已存档）
 ├── Design4.md               # 当前设计记录
 ├── Build5.md                # 当前构建方案

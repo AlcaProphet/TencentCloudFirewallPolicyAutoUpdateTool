@@ -40,6 +40,8 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/targets/{id}", d.handleUpdateTarget)
 	mux.HandleFunc("DELETE /api/targets/{id}", d.handleDeleteTarget)
 	mux.HandleFunc("POST /api/test-connection", d.handleTestConnection)
+	// 地域数据（前端自动补全数据源）
+	mux.HandleFunc("GET /api/zones", d.handleGetZones)
 	// 规则管理
 	mux.HandleFunc("GET /api/rules", d.handleGetRules)
 	mux.HandleFunc("POST /api/rules", d.handleAddRule)

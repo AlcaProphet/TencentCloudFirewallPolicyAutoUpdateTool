@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NAlert, useMessage } from 'naive-ui'
-import { ref, onMounted, h, watch } from 'vue'
+import { ref, onMounted, h, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { request } from '../api'
-import { cloudOptions, cloudLabelMap } from '../constants'
+import { cloudOptions, cloudLabelMap, resourceIdHint } from '../constants'
 import { useSettings } from '../composables/useSettings'
+import { useZones } from '../composables/useZones'
 import type { TargetConfig, TestConnectionResult } from '../types'
 
 const targets = ref<TargetConfig[]>([])
@@ -34,6 +35,27 @@ function updateCredWarning() {
 // 云类型变化时刷新提示
 watch(() => form.value.cloud_type, updateCredWarning)
 
+// ─── 地域自动补全（改进：GET /api/zones 预填建议，允许输入任意值） ───
+const { load: loadZones, regionOptions } = useZones()
+
+// 地域选项：当前云类型预填列表 + 当前已填值（列表外值时保证编辑回显）
+const regionOpts = computed(() => {
+  const opts = regionOptions(form.value.cloud_type)
+  const cur = form.value.region
+  if (cur && !opts.some((o) => o.value === cur)) {
+    opts.push({ label: cur, value: cur })
+  }
+  return opts
+})
+
+// 资源 ID 语义说明（随云类型变化）
+const resourceIdDesc = computed(() => {
+  const ct = form.value.cloud_type
+  return ct === 'tc_lighthouse' || ct === 'ali_swas'
+    ? '轻量云平台：资源 ID 为实例 ID'
+    : 'CVM / ECS 平台：资源 ID 为安全组 ID'
+})
+
 async function load() {
   try {
     targets.value = await request<TargetConfig[]>('/api/targets')
@@ -44,7 +66,7 @@ async function load() {
 
 // 挂载：加载目标 + 凭据状态（refreshSettings 强制拉取保证提示新鲜）
 onMounted(async () => {
-  await Promise.all([load(), refreshSettings()])
+  await Promise.all([load(), refreshSettings(), loadZones()])
   updateCredWarning()
 })
 
@@ -148,10 +170,20 @@ const columns = [
           <NSelect v-model:value="form.cloud_type" :options="cloudOptions" />
         </NFormItem>
         <NFormItem label="资源ID">
-          <NInput v-model:value="form.resource_id" placeholder="lhins-xxx / sg-xxx" />
+          <NInput v-model:value="form.resource_id" :placeholder="resourceIdHint(form.cloud_type)" />
+          <NAlert type="info" :show-icon="false" style="margin-top: 6px; font-size: 12px">
+            {{ resourceIdDesc }}
+          </NAlert>
         </NFormItem>
         <NFormItem label="地域">
-          <NInput v-model:value="form.region" placeholder="ap-guangzhou" />
+          <NSelect
+            v-model:value="form.region"
+            :options="regionOpts"
+            filterable
+            tag
+            clearable
+            placeholder="选择或输入地域 ID（如 ap-guangzhou）"
+          />
         </NFormItem>
         <NSpace>
           <NButton type="primary" @click="saveTarget">保存</NButton>
