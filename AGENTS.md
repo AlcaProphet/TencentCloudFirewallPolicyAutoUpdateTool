@@ -152,6 +152,11 @@
 - WebUI 模式通过 pidfile（`config/pidfile.go` + 平台文件）防止多实例运行
 - 事件类型：全局同步完成用 `EventSyncComplete`，逐域名同步完成用 `EventDomainSyncComplete`（定义于 `notifier/bus.go`）
 - 同步全局开关：`POST /api/sync/pause|resume` 端点（先写 DB 后通知 Syncer）；`SyncStatus.enabled` 字段；前端「运行测试」页（路由 `/run-test`）统一承载模拟测试与连接测试（`DryRunResponse{results, warnings}` 包装、`to_add`/`to_delete` 为规则明细数组）
+- 地域自动补全：数据源为 `PlatformAPIDocs/PlatformZoneGuide/`（后端 `webui/api/zones.go` 提供 `GET /api/zones`，文档更新时需同步数据）；后端仅提供预填数据、不校验地域合法性（允许输入列表外值，由云 API 自行报错，符合「不过度防御」）
+- 资源扫描：`provider/scan.go` 实现四平台只读列表查询（Lighthouse `DescribeInstances`、SWAS `ListInstances`、CVM/ECS `DescribeSecurityGroups`），`webui/api/scan.go` 提供 `POST /api/scan-resources`（凭据缺失快速失败）、`GET/DELETE /api/scanned-resources`；结果按 cloud_type+region 覆盖式入库（`scanned_resources` 表），仅供添加目标自动补全，同步流程不依赖
+- 清空所有数据：`POST /api/config/reset` 调 `Store.ResetAll()` 清空全部业务表（targets/rules/settings/sync_logs/alert_email/alert_webhook/scanned_resources），等效重新初始化；前端入口需红色警告按钮 + 卡片式二次确认
+- 前端 UI 规范：全局字号 16px、页面级操作按钮统一 `size="large"`（44px，`App.vue` themeOverrides 按分尺寸变量覆盖）；表格内操作按钮（编辑/删除）保持小号；所有二次确认使用 `NModal preset="card"` 卡片式弹窗（危险操作确认按钮 `type="error"`）
+- 资源 ID 输入提示：按云类型区分文案（轻量云=实例 ID，CVM/ECS=安全组 ID），由 `constants.ts` 的 `resourceIdHint()` 统一承载（仅 placeholder，不引入额外说明块）
 
 ---
 
