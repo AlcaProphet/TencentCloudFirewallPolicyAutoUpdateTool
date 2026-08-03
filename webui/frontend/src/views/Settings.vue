@@ -2,7 +2,6 @@
 import { NForm, NFormItem, NInput, NSelect, NButton, NSpace, NCard, NGrid, NGi, NModal, useMessage, useThemeVars } from 'naive-ui'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { request } from '../api'
-import { cloudLabelMap } from '../constants'
 import { useZones } from '../composables/useZones'
 import { useScannedResources } from '../composables/useScannedResources'
 
@@ -52,6 +51,12 @@ const aliAllScanned = computed(() => [
 const tcEmptyHint = computed(() => (tcScan.hasScanned ? '未找到资源，请尝试切换产品或地域' : '暂无扫描结果，选择云产品与地域后点击「扫描资源」'))
 const aliEmptyHint = computed(() => (aliScan.hasScanned ? '未找到资源，请尝试切换产品或地域' : '暂无扫描结果，选择云产品与地域后点击「扫描资源」'))
 
+// 产品类型短标签（表格列宽紧凑展示用）：轻量云类统称「轻量云」，CVM/ECS 用英文缩写
+function shortProductLabel(ct: string): string {
+  const m: Record<string, string> = { tc_lighthouse: '轻量云', tc_cvm: 'CVM', ali_swas: '轻量云', ali_ecs: 'ECS' }
+  return m[ct] || ct
+}
+
 onMounted(async () => {
   try {
     settings.value = await request<Record<string, string>>('/api/settings')
@@ -79,9 +84,24 @@ async function runScan(s: typeof tcScan) {
   s.loading = false
 }
 
-async function clearScan(s: typeof tcScan) {
-  if (!s.product) return
-  await clearResources(s.product)
+// ─── 清空扫描结果（卡片式确认后执行；清空该厂商全部产品，与「已扫描的资源」展示范围一致） ───
+const clearConfirm = ref(false)
+const clearTarget = ref<'tc' | 'ali' | null>(null)
+
+const clearTitle = computed(() => (clearTarget.value === 'tc' ? '清空腾讯云扫描结果' : '清空阿里云扫描结果'))
+const clearDesc = computed(() =>
+  clearTarget.value === 'tc'
+    ? '将清空腾讯云（轻量云 + CVM）的全部扫描结果，添加目标时将不再提供这些资源的自动补全。此操作不可恢复，确认继续？'
+    : '将清空阿里云（轻量云 + ECS）的全部扫描结果，添加目标时将不再提供这些资源的自动补全。此操作不可恢复，确认继续？'
+)
+
+async function confirmClearScan() {
+  const products = clearTarget.value === 'tc' ? ['tc_lighthouse', 'tc_cvm'] : ['ali_swas', 'ali_ecs']
+  clearConfirm.value = false
+  for (const ct of products) {
+    await clearResources(ct)
+  }
+  message.success('扫描结果已清空')
 }
 
 // ─── 清空所有数据（重新初始化，卡片式确认） ───
@@ -192,10 +212,10 @@ async function confirmImport() {
           </NForm>
           <!-- 扫描操作区 -->
           <NSpace align="center" style="margin-bottom: 8px">
-            <NSelect v-model:value="tcScan.product" :options="tcProductOptions" placeholder="选择云产品" style="width: 150px" />
-            <NSelect v-model:value="tcScan.region" :options="regionOptions(tcScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 190px" />
+            <NSelect size="large" v-model:value="tcScan.product" :options="tcProductOptions" placeholder="选择云产品" style="width: 150px" />
+            <NSelect size="large" v-model:value="tcScan.region" :options="regionOptions(tcScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 190px" />
             <NButton type="primary" size="large" :loading="tcScan.loading" @click="runScan(tcScan)">扫描资源</NButton>
-            <NButton size="large" @click="clearScan(tcScan)">清空</NButton>
+            <NButton type="error" tertiary size="large" @click="clearTarget = 'tc'; clearConfirm = true">清空</NButton>
           </NSpace>
           <p v-if="tcScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ tcScan.error }}</p>
           <!-- 已扫描资源区（厂商聚合：轻量云 + CVM） -->
@@ -203,16 +223,16 @@ async function confirmImport() {
             <div :style="{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: themeVars.textColor1 }">已扫描的资源</div>
             <div v-if="tcAllScanned.length">
               <div :style="{ display: 'flex', gap: '8px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
-                <span style="width: 92px">产品类型</span>
-                <span style="flex: 1; min-width: 0">资源名称</span>
-                <span style="width: 118px">资源ID</span>
-                <span style="width: 90px">地域</span>
+                <span style="flex: 0 0 64px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">产品类型</span>
+                <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">资源名称</span>
+                <span style="flex: 1.6; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">资源ID</span>
+                <span style="flex: 0 0 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">地域</span>
               </div>
               <div v-for="r in tcAllScanned" :key="r.id" :style="{ display: 'flex', gap: '8px', fontSize: '12px', padding: '3px 0', color: themeVars.textColor1 }">
-                <span style="width: 92px">{{ cloudLabelMap[r.cloud_type] || r.cloud_type }}</span>
+                <span style="flex: 0 0 64px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ shortProductLabel(r.cloud_type) }}</span>
                 <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_name || '-' }}</span>
-                <span style="width: 118px">{{ r.resource_id }}</span>
-                <span style="width: 90px">{{ r.region }}</span>
+                <span style="flex: 1.6; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_id }}</span>
+                <span style="flex: 0 0 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.region }}</span>
               </div>
             </div>
             <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ tcEmptyHint }}</div>
@@ -232,10 +252,10 @@ async function confirmImport() {
           </NForm>
           <!-- 扫描操作区 -->
           <NSpace align="center" style="margin-bottom: 8px">
-            <NSelect v-model:value="aliScan.product" :options="aliProductOptions" placeholder="选择云产品" style="width: 150px" />
-            <NSelect v-model:value="aliScan.region" :options="regionOptions(aliScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 190px" />
+            <NSelect size="large" v-model:value="aliScan.product" :options="aliProductOptions" placeholder="选择云产品" style="width: 150px" />
+            <NSelect size="large" v-model:value="aliScan.region" :options="regionOptions(aliScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 190px" />
             <NButton type="primary" size="large" :loading="aliScan.loading" @click="runScan(aliScan)">扫描资源</NButton>
-            <NButton size="large" @click="clearScan(aliScan)">清空</NButton>
+            <NButton type="error" tertiary size="large" @click="clearTarget = 'ali'; clearConfirm = true">清空</NButton>
           </NSpace>
           <p v-if="aliScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ aliScan.error }}</p>
           <!-- 已扫描资源区（厂商聚合：轻量云 + ECS） -->
@@ -243,16 +263,16 @@ async function confirmImport() {
             <div :style="{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: themeVars.textColor1 }">已扫描的资源</div>
             <div v-if="aliAllScanned.length">
               <div :style="{ display: 'flex', gap: '8px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
-                <span style="width: 92px">产品类型</span>
-                <span style="flex: 1; min-width: 0">资源名称</span>
-                <span style="width: 118px">资源ID</span>
-                <span style="width: 90px">地域</span>
+                <span style="flex: 0 0 64px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">产品类型</span>
+                <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">资源名称</span>
+                <span style="flex: 1.6; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">资源ID</span>
+                <span style="flex: 0 0 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">地域</span>
               </div>
               <div v-for="r in aliAllScanned" :key="r.id" :style="{ display: 'flex', gap: '8px', fontSize: '12px', padding: '3px 0', color: themeVars.textColor1 }">
-                <span style="width: 92px">{{ cloudLabelMap[r.cloud_type] || r.cloud_type }}</span>
+                <span style="flex: 0 0 64px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ shortProductLabel(r.cloud_type) }}</span>
                 <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_name || '-' }}</span>
-                <span style="width: 118px">{{ r.resource_id }}</span>
-                <span style="width: 90px">{{ r.region }}</span>
+                <span style="flex: 1.6; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_id }}</span>
+                <span style="flex: 0 0 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.region }}</span>
               </div>
             </div>
             <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ aliEmptyHint }}</div>
@@ -334,6 +354,17 @@ async function confirmImport() {
       <NSpace justify="end">
         <NButton size="large" @click="showImportConfirm = false">取消</NButton>
         <NButton type="primary" size="large" @click="confirmImport">确认导入</NButton>
+      </NSpace>
+    </NModal>
+
+    <!-- 清空扫描结果确认弹窗（厂商级，红色警告按钮） -->
+    <NModal v-model:show="clearConfirm" preset="card" :title="clearTitle" style="width: 420px">
+      <p style="margin: 0 0 16px; line-height: 1.7">
+        {{ clearDesc }}
+      </p>
+      <NSpace justify="end">
+        <NButton size="large" @click="clearConfirm = false">取消</NButton>
+        <NButton type="error" size="large" @click="confirmClearScan">确认清空</NButton>
       </NSpace>
     </NModal>
 

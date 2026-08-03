@@ -138,8 +138,8 @@ const columns = [
     <NButton type="primary" size="large" style="margin: 8px 0 12px" @click="openAdd">添加规则</NButton>
     <NDataTable :columns="columns" :data="rules" :bordered="true" />
 
-    <NModal v-model:show="showModal" :title="editingId ? '编辑规则' : '添加规则'" preset="card" style="width: 500px">
-      <NForm :model="form" label-placement="left" label-width="60">
+    <NModal v-model:show="showModal" :title="editingId ? '编辑规则' : '添加规则'" preset="card" style="width: 540px">
+      <NForm :model="form" label-placement="left" label-width="80">
         <NFormItem label="域名">
           <NInput v-model:value="form.host" placeholder="api.example.com" />
         </NFormItem>

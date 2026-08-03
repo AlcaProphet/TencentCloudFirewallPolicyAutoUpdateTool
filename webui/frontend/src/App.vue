@@ -35,6 +35,10 @@ const themeOverrides = {
     fontSizeMedium: '16px',
     fontSizeSmall: '15px',
     fontSizeTiny: '15px',
+    heightLarge: '44px',
+    heightMedium: '40px',
+    heightSmall: '36px',
+    heightTiny: '28px',
   },
   Form: {
     labelFontSizeTopLarge: '16px',
