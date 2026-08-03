@@ -137,6 +137,7 @@
 - 镜像命名：`ghcr.io/alcaprophet/fwalizer:<tag>`
 - 构建平台：`linux/amd64`
 - PR 时仅编译检查，不推送镜像
+- **SDK 版本策略（有意设计）**：腾讯云/阿里云要求使用较新的 SDK，使用过期 SDK 无法调用新接口/功能；因此每次构建前执行 `go get -u` 将云厂商 SDK 升级到最新（见 `docker-publish.yml`「更新所有 SDK 到最新版」步骤），镜像始终携带最新 SDK，SDK 可复现性要求服从该策略
 
 ---
 
