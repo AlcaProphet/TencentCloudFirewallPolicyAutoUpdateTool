@@ -13,6 +13,18 @@ type StoreLogWriter struct {
 	Store *config.Store
 }
 
+// toInt 兼容事件 Data 中的数字类型（进程内为 int；事件数据若经 JSON 往返则为 float64）
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
 // OnEvent 实现 notifier.Subscriber 接口
 func (w *StoreLogWriter) OnEvent(event notifier.Event) error {
 	log := config.SyncLog{Timestamp: event.Timestamp}
@@ -39,6 +51,13 @@ func (w *StoreLogWriter) OnEvent(event notifier.Event) error {
 		}
 	case notifier.EventDomainSyncComplete:
 		log.Result = "success"
+		// 读取实际写入计数（Build4 Step 1：计数链路打通，修复历史记录新增/删除恒为 0）
+		if v, ok := event.Data["added"]; ok {
+			log.Added = toInt(v)
+		}
+		if v, ok := event.Data["deleted"]; ok {
+			log.Deleted = toInt(v)
+		}
 	default:
 		return nil
 	}

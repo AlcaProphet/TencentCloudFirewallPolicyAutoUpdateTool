@@ -121,3 +121,12 @@ func (d *Deps) handleGetSyncLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, logs)
 }
+
+// handleClearSyncLogs 清空同步历史记录
+func (d *Deps) handleClearSyncLogs(w http.ResponseWriter, r *http.Request) {
+	if err := d.Store.ClearSyncLogs(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "历史记录已清空"})
+}

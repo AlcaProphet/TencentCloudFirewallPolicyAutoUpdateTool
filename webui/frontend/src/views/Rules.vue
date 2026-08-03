@@ -2,6 +2,7 @@
 import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
 import { ref, onMounted, h, watch } from 'vue'
 import { request } from '../api'
+import { cloudLabelMap } from '../constants'
 import type { DomainRule } from '../types'
 
 const rules = ref<DomainRule[]>([])
@@ -42,7 +43,7 @@ async function loadTargets() {
   try {
     const data = await request<any[]>('/api/targets')
     targetOptions.value = data.map((t: any) => ({
-      label: `${t.cloud_type} / ${t.resource_id}`,
+      label: `${cloudLabelMap[t.cloud_type] || t.cloud_type} / ${t.resource_id}`,
       value: t.id,
     }))
   } catch (e: any) {
@@ -133,14 +134,12 @@ const columns = [
 
 <template>
   <div>
-    <NSpace justify="space-between" align="center">
-      <h2>域名规则</h2>
-      <NButton type="primary" size="small" @click="openAdd">添加规则</NButton>
-    </NSpace>
+    <h2>域名规则</h2>
+    <NButton type="primary" size="large" style="margin: 8px 0 12px" @click="openAdd">添加规则</NButton>
     <NDataTable :columns="columns" :data="rules" :bordered="true" />
 
-    <NModal v-model:show="showModal" :title="editingId ? '编辑规则' : '添加规则'" preset="card" style="width: 500px">
-      <NForm :model="form" label-placement="left" label-width="60">
+    <NModal v-model:show="showModal" :title="editingId ? '编辑规则' : '添加规则'" preset="card" style="width: 540px">
+      <NForm :model="form" label-placement="left" label-width="80">
         <NFormItem label="域名">
           <NInput v-model:value="form.host" placeholder="api.example.com" />
         </NFormItem>
@@ -161,7 +160,7 @@ const columns = [
         </NFormItem>
         <NFormItem label="解析IPv6">
           <NSwitch v-model:value="form.enable_ipv6" />
-          <span style="margin-left: 8px; font-size: 12px; color: #999">{{ form.enable_ipv6 ? '同时使用 A + AAAA 记录' : '仅使用 A 记录（IPv4）' }}</span>
+          <span style="margin-left: 8px; font-size: 14px; color: #999">{{ form.enable_ipv6 ? '同时使用 A + AAAA 记录' : '仅使用 A 记录（IPv4）' }}</span>
         </NFormItem>
         <NButton type="primary" @click="saveRule">保存</NButton>
       </NForm>

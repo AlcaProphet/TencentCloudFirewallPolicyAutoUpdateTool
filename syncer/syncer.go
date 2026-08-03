@@ -317,31 +317,39 @@ func (s *Syncer) DryRun() (DryRunResponse, error) {
 
 // syncAll 执行一轮完整同步
 func (s *Syncer) syncAll() {
-	slog.Info("开始同步", "targets", len(s.providers), "rules", len(s.cfg.DomainRules))
+	// 快照：RLock 保护 providers/cfg/resolver（与 DryRun 一致，消除热重载并发竞态）。
+	// 热重载（ReloadProviders/ReloadResolver/Reload）持写锁替换这些字段，本轮同步使用快照不受影响
+	s.mu.RLock()
+	providers := s.providers
+	cfg := s.cfg
+	resolver := s.resolver
+	s.mu.RUnlock()
+
+	slog.Info("开始同步", "targets", len(providers), "rules", len(cfg.DomainRules))
 	start := time.Now()
 
 	// 发布 sync:start 事件
 	s.bus.Publish(notifier.Event{
 		Type:      notifier.EventSyncStart,
 		Timestamp: time.Now(),
-		Data:      map[string]any{"targets": len(s.providers), "rules": len(s.cfg.DomainRules)},
+		Data:      map[string]any{"targets": len(providers), "rules": len(cfg.DomainRules)},
 	})
 
 	// 按云厂商分组，跨云并行
-	groups := s.groupByCloud()
+	groups := s.groupByCloud(providers)
 	var wg sync.WaitGroup
-	for ct, providers := range groups {
+	for ct, ps := range groups {
 		wg.Add(1)
 		go func(ct config.CloudType, ps []provider.Provider) {
 			defer wg.Done()
 			for _, p := range ps {
-				rules := filterRulesForTarget(s.cfg.DomainRules, p.TargetIndex())
+				rules := filterRulesForTarget(cfg.DomainRules, p.TargetIndex())
 				for _, rule := range rules {
-					s.syncDomain(p, rule)
+					s.syncDomain(p, rule, resolver)
 					time.Sleep(rateLimitInterval(ct))
 				}
 			}
-		}(ct, providers)
+		}(ct, ps)
 	}
 	wg.Wait()
 
@@ -360,9 +368,9 @@ func (s *Syncer) syncAll() {
 }
 
 // syncDomain 同步单个域名到单个 Provider
-func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
+func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule, resolver *dns.Resolver) {
 	// 0. DNS 解析（无论是否熔断都执行，熔断时作为半开探测）
-	resolved, err := s.resolver.Resolve(context.Background(), rule.Host)
+	resolved, err := resolver.Resolve(context.Background(), rule.Host)
 	if err != nil {
 		if s.cb.IsOpen(rule.Host) {
 			// 半开探测失败：维持熔断（不调用 RecordFailure，熔断中已停止计数）
@@ -379,13 +387,8 @@ func (s *Syncer) syncDomain(p provider.Provider, rule config.DomainRule) {
 		return
 	}
 
-	// 解析成功：若之前处于熔断则解除
-	if s.cb.IsOpen(rule.Host) {
-		s.cb.RecordSuccess(rule.Host)
-		slog.Info("DNS 熔断解除", "domain", rule.Host)
-	} else {
-		s.cb.RecordSuccess(rule.Host)
-	}
+	// 解析成功：解除熔断（RecordSuccess 内部处理计数并输出解除日志）
+	s.cb.RecordSuccess(rule.Host)
 
 	// 1. 按规则配置过滤 IPv6 地址
 	if !rule.EnableIPv6 {
@@ -408,7 +411,8 @@ func (s *Syncer) syncDomainInternal(p provider.Provider, rule config.DomainRule,
 		}
 	}
 
-	if err := s.retrySync(p, rule, resolved); err != nil {
+	added, deleted, err := s.retrySync(p, rule, resolved)
+	if err != nil {
 		slog.Error("同步失败", "provider", p.Name(), "domain", rule.Host, "error", err)
 		s.bus.Publish(notifier.Event{
 			Type:      notifier.EventSyncError,
@@ -422,13 +426,13 @@ func (s *Syncer) syncDomainInternal(p provider.Provider, rule config.DomainRule,
 	s.bus.Publish(notifier.Event{
 		Type:      notifier.EventDomainSyncComplete,
 		Timestamp: time.Now(),
-		Data:      map[string]any{"provider": p.Name(), "domain": rule.Host},
+		Data:      map[string]any{"provider": p.Name(), "domain": rule.Host, "added": added, "deleted": deleted},
 	})
 }
 
-func (s *Syncer) groupByCloud() map[config.CloudType][]provider.Provider {
+func (s *Syncer) groupByCloud(providers []provider.Provider) map[config.CloudType][]provider.Provider {
 	groups := make(map[config.CloudType][]provider.Provider)
-	for _, p := range s.providers {
+	for _, p := range providers {
 		ct := p.CloudType()
 		groups[ct] = append(groups[ct], p)
 	}

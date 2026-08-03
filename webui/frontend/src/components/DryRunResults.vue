@@ -58,7 +58,7 @@ function emptyChange(): RuleChange[] {
   <div>
     <!-- 空状态（按优先级） -->
     <NAlert v-if="!hasRun" type="info" :show-icon="false">
-      尚未执行 Dry Run，点击上方「执行 Dry Run」开始
+      尚未执行模拟测试，点击上方「执行模拟测试」开始
     </NAlert>
 
     <template v-else>
@@ -101,7 +101,7 @@ function emptyChange(): RuleChange[] {
             </NAlert>
 
             <template v-else>
-              <div style="font-size: 12px; color: #666; margin-bottom: 4px">待添加</div>
+              <div style="font-size: 14px; color: #666; margin-bottom: 4px">待添加</div>
               <NDataTable
                 :columns="changeColumns"
                 :data="item.to_add?.length ? item.to_add : emptyChange()"
@@ -109,7 +109,7 @@ function emptyChange(): RuleChange[] {
                 size="small"
                 :max-height="200"
               />
-              <div style="font-size: 12px; color: #666; margin: 12px 0 4px">待删除</div>
+              <div style="font-size: 14px; color: #666; margin: 12px 0 4px">待删除</div>
               <NDataTable
                 :columns="changeColumns"
                 :data="item.to_delete?.length ? item.to_delete : emptyChange()"

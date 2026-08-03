@@ -7,6 +7,22 @@ export interface TargetConfig {
   resource_id: string
 }
 
+// ZoneRegion 地域及其可用区（GET /api/zones，地域自动补全数据源）
+export interface ZoneRegion {
+  id: string
+  name: string
+  zones: string[]
+}
+
+// ScannedResource 扫描到的云资源（GET /api/scanned-resources，资源 ID 自动补全数据源）
+export interface ScannedResource {
+  id: number
+  cloud_type: string
+  region: string
+  resource_id: string
+  resource_name: string
+}
+
 export interface DomainRule {
   id: number
   host: string
@@ -62,6 +78,7 @@ export interface SyncLogEntry {
   result: string
   added: number
   deleted: number
+  error?: string // 失败详情（后端已返回，Build4 Step 4 前端消费）
 }
 
 export interface SyncEvent {

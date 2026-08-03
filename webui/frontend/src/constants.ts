@@ -15,3 +15,18 @@ export const cloudLabelMap: Record<string, string> = {}
 for (const o of cloudOptions) {
   cloudLabelMap[String(o.value)] = String(o.label)
 }
+
+// 云类型 → 资源 ID 输入提示（placeholder 文案）
+// 轻量云类填写实例 ID，CVM/ECS 类填写安全组 ID
+// 供 Targets.vue 与 RunTest.vue 共用
+const resourceIdHints: Record<string, string> = {
+  tc_lighthouse: '实例ID（lhins- 开头）',
+  tc_cvm: '安全组ID（sg- 开头）',
+  ali_swas: '实例ID（UUID 格式）',
+  ali_ecs: '安全组ID（sg- 开头）',
+}
+
+// 按云类型取资源 ID 提示文案（未知类型回退通用文案）
+export function resourceIdHint(cloudType: string): string {
+  return resourceIdHints[cloudType] || '实例ID / 安全组ID'
+}

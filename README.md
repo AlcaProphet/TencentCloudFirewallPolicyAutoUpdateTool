@@ -2,12 +2,34 @@
 
 **FWAlizer**（Firewall DNS Synchronizer）是一个轻量级自动化工具：定时解析指定域名的 IP 地址，自动同步到云防火墙/安全组白名单中。专为域名 IP 频繁变动的场景设计（如动态 DNS、API 网关、VPN 入口）。
 
+> 默认推荐使用 **WebUI 模式**（浏览器可视化管理，零配置文件）；`.env` 模式作为**备用/进阶/极简**模式，适合服务器无界面场景。
+
+![仪表盘](./ReadmeAsset/dashboard.png)
+
+---
+
+## 目录
+
+- [核心特性](#核心特性)
+- [界面预览](#界面预览)
+- [快速上手（WebUI 模式，推荐）](#快速上手webui-模式推荐)
+- [运行模式](#运行模式)
+- [配置说明](#配置说明)
+- [CLI 数据备份与恢复](#cli-数据备份与恢复)
+- [告警通知](#告警通知)
+- [多云 API 权限与 API 文档](#多云-api-权限与-api-文档)
+- [Docker 部署](#docker-部署)
+- [开发指南](#开发指南)
+- [常见问题（FAQ）](#常见问题faq)
+
 ---
 
 ## 核心特性
 
 - **多云支持**：腾讯云 Lighthouse / CVM，阿里云轻量云（SWAS）/ ECS，四款云产品统一管控
-- **双模式运行**：`.env` 文件驱动（适合服务器/容器）或 WebUI 可视化管理（适合桌面端）
+- **WebUI 可视化管理**（推荐）：浏览器完成全部配置，明暗主题、仪表盘状态卡片、同步日志实时查看、模拟测试预览
+- **资源扫描与自动补全**：设置页一键扫描云厂商资源（实例/安全组），添加目标时自动补全资源 ID 并联动填入地域
+- **地域自动补全**：内置四平台地域数据，添加目标时可下拉过滤选择，也可自由输入任意地域（兼容新区域）
 - **增量同步**：仅操作带 `[TAG]` 标记的规则，绝不覆盖手动配置的防火墙规则
 - **DNS 熔断保护**：连续解析失败达阈值后自动熔断，半开探测自动恢复，避免误删规则
 - **乐观锁重试**：每次写入前重新拉取最新状态，最多 3 次指数退避重试
@@ -17,25 +39,124 @@
 
 ---
 
-## 快速开始
+## 界面预览
 
-### 环境要求
+> 以下截图使用演示数据（示例目标与规则），实际界面以您的配置为准。
 
-| 工具 | 版本 | 用途 |
-|------|------|------|
-| Go | 1.25+ | 编译（仅开发时需要） |
-| Node.js | 20+（可选） | 前端开发/重新构建时需要 |
-| Docker | 20+（可选） | 容器化部署 |
+仪表盘支持明暗双主题，状态一目了然：
 
-### 最简配置
+| 亮色主题 | 暗色主题 |
+|:---:|:---:|
+| ![仪表盘-亮色](./ReadmeAsset/dashboard.png) | ![仪表盘-暗色](./ReadmeAsset/dashboard-dark.png) |
 
-复制 `.env.example` 为 `.env`，填入必要项即可运行：
+**云资源管理**：目标增删改、资源 ID 按平台提示、扫描结果自动补全、弹窗内测试连接
+
+![云资源管理](./ReadmeAsset/targets.png)
+
+![添加目标弹窗](./ReadmeAsset/target-add-modal.png)
+
+**域名规则**：协议/端口/动作/适用目标配置，每条规则独立 IPv6 解析开关
+
+![域名规则](./ReadmeAsset/rules.png)
+
+**全局设置**：凭据卡片化（腾讯云/阿里云分卡）+ 一键扫描云资源 + TAG/间隔/DNS 配置
+
+![全局设置](./ReadmeAsset/settings.png)
+
+**模拟测试**：按当前目标与规则计算变更预览，不实际写入云防火墙
+
+![模拟测试](./ReadmeAsset/dry-run.png)
+
+**同步日志**：历史记录 + 实时运行日志（与终端格式一致）
+
+![同步日志](./ReadmeAsset/logs.png)
+
+**告警配置**：邮件（SMTP）+ Webhook（钉钉/飞书/Slack）双通道
+
+![告警配置](./ReadmeAsset/alerts.png)
+
+---
+
+## 快速上手（WebUI 模式，推荐）
+
+无需任何配置文件，一个二进制即可开始：
+
+### 第 1 步：获取程序
+
+**方式 A：从源码编译**（需要 Go 1.25+）
 
 ```bash
-cp .env.example .env
+make build
 ```
 
-最简 `.env`（仅一台腾讯云 Lighthouse + 一条规则）：
+**方式 B：Docker 运行**（见下文「Docker 部署」）
+
+### 第 2 步：启动
+
+```bash
+./fwalizer
+```
+
+启动后通过浏览器访问 `http://127.0.0.1:60200`（若端口被占用会自动选择可用端口，日志中会提示实际地址）。
+
+### 第 3 步：完成首次配置（按引导提示顺序）
+
+1. **全局设置**（左侧菜单 →「全局设置」）：
+   - 填写云厂商 API 密钥：
+     - 腾讯云：SecretId / SecretKey（[获取地址](https://console.cloud.tencent.com/cam/capi)，建议 CAM 子账号 + 最小权限）
+     - 阿里云：AccessKeyId / AccessKeySecret（[获取地址](https://ram.console.aliyun.com/manage/ak)，建议 RAM 子账号 + 最小权限）
+   - 每张凭据卡片内可选择云产品与地域，点击「扫描资源」自动列出该地域下的实例/安全组
+   - 填写 `TAG`（规则标记前缀，默认 `auto-dns`）与同步间隔等，点击「保存」
+2. **云资源管理**（左侧菜单 →「云资源管理」）：点击「添加目标」，选择云产品（腾讯云轻量云 / 腾讯云 CVM / 阿里云轻量云 / 阿里云 ECS）；资源 ID 可直接从扫描结果下拉选择（选择后自动填入所在地域），也可手动输入；地域支持下拉补全或自由输入，可先点「测试连接」验证配置
+3. **域名规则**（左侧菜单 →「域名规则」）：点击「添加规则」，填写要同步的域名（如 `api.example.com`）、协议（TCP/UDP/TCP+UDP/ICMP）、端口、动作（ACCEPT/DROP）与适用目标，点击「保存」
+
+### 第 4 步：验证与运行
+
+- **仪表盘**：查看同步引擎状态（运行中/已暂停/已停止）、上次同步时间、统计概览（目标数/规则数/最近增删），可「立即同步」或「暂停/开启」同步（更多页面截图见上文「界面预览」）
+- **模拟测试**（推荐先做）：进入「模拟测试」页 →「执行模拟测试」，**按当前目标与规则计算变更预览，不实际写入云防火墙规则**，确认无误后再开启同步
+- **同步日志**：查看每次同步的历史记录（新增/删除计数、失败原因详情）与实时运行日志
+
+> 💡 **提示**：首次使用若未配置任何密钥，仪表盘顶部会显示引导条，点击「去配置」直达全局设置。
+
+---
+
+## 运行模式
+
+### WebUI 模式（默认，推荐所有用户）
+
+未检测到 `TARGETS` 环境变量时自动进入。配置存储在 SQLite 数据库中，通过浏览器管理，修改后自动热重载。
+
+- 默认地址：`http://127.0.0.1:60200`（仅绑定本机，端口被占用时自动在 50000–65535 随机选择）
+- 数据路径（自动选择）：
+  - macOS：`~/Library/Application Support/fwalizer/config.db`
+  - Linux：`~/.config/fwalizer/config.db`
+  - Windows：`%APPDATA%\fwalizer\config.db`
+- 可通过 `FWALIZER_DATA_DIR` 环境变量自定义数据目录
+- 页面一览：
+
+| 页面 | 功能 |
+|------|------|
+| 仪表盘 | 同步引擎状态（大字+状态色）、上次同步、统计概览、操作中心（立即同步/暂停/开启） |
+| 云资源管理 | 云资源目标增删改、弹窗内「测试连接」、资源 ID 按平台提示 + 扫描结果自动补全、资源-地域联动、未配置密钥时提示 |
+| 域名规则 | 域名规则增删改、适用目标（中文云产品名）、每规则独立 IPv6 解析开关 |
+| 全局设置 | 凭据卡片化（腾讯云/阿里云分卡）+ 一键扫描云资源（按厂商聚合展示）、TAG/间隔/DNS/日志级别、地域自动补全、配置导入导出（含凭据提示）、清空所有数据 |
+| 同步日志 | 历史记录（新增/删除计数、failed 点击查看错误详情、清空/刷新记录）+ 实时运行日志（常驻展开） |
+| 模拟测试 | 变更预览（按当前目标与规则计算，不实际写入）；连接测试保留在目标添加/编辑弹窗 |
+| 告警配置 | 邮件（SMTP）+ Webhook（钉钉/飞书/Slack）告警 |
+
+### .env 模式（备用 / 进阶 / 极简）
+
+适合服务器、容器等无界面场景。当检测到 `TARGETS` 环境变量时自动进入（也可通过 `FWALIZER_MODE=env` 强制指定）。纯 headless 运行，日志输出到 stdout。
+
+```bash
+./fwalizer                    # 从 .env 加载配置并启动同步
+./fwalizer validate .env      # 仅校验配置，不启动
+./fwalizer version            # 显示版本号
+./fwalizer backup             # 备份 WebUI 数据库
+./fwalizer restore <文件>     # 从备份恢复数据库
+```
+
+最简单的 `.env`（复制 [.env.example](./.env.example) 后填写）：
 
 ```env
 TARGETS=tc_lighthouse|lhins-abc123|ap-guangzhou
@@ -46,107 +167,34 @@ TC_ACCESS_KEY=xxxxxxxx
 RULES=api.example.com|TCP|443|ACCEPT||生产API
 ```
 
-### 编译与运行
-
-```bash
-# 编译
-make build
-
-# 验证配置
-./fwalizer validate .env
-
-# 启动同步
-./fwalizer
-```
-
-### Docker 一键运行
-
-```bash
-docker run -d --name fwalizer --restart=always \
-  -v $(pwd)/.env:/app/.env:ro \
-  ghcr.io/alcaprophet/fwalizer:latest
-```
-
 ---
 
 ## 配置说明
 
-所有配置通过 `.env` 文件设置（`KEY=VALUE` 格式，支持 `#` 注释和 `\` 续行）。
+### WebUI 模式
 
-### 基础配置
+全部配置在浏览器中完成（见「快速上手」），无需手写配置文件；配置导入/导出在「全局设置」页提供（凭据字段不导出）。
+
+### .env 模式变量表
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `TARGETS` | （必填） | 云资源目标列表，格式见下方 |
-| `RULES` | （必填） | 域名规则列表，格式见下方 |
+| `TARGETS` | （必填） | 云资源目标列表，格式：`provider\|resource_id\|region`，逗号分隔 |
+| `RULES` | （必填） | 域名规则列表，格式见「RULES 语法」 |
 | `TAG` | `auto-dns` | 规则标记前缀，用于识别本工具创建的规则 |
 | `INTERVAL` | `5m` | DNS 检查间隔（如 `30s`、`5m`、`1h`） |
 | `LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
-| `SYNC_ENABLED` | `true` | 同步全局开关：`false` 时启动不执行同步（Dry Run 不受影响） |
+| `SYNC_ENABLED` | `true` | 同步全局开关：`false` 时启动不执行同步（模拟测试不受影响） |
 | `FWALIZER_MODE` | 自动检测 | 强制运行模式：`env` / `webui` |
-
-### DNS 配置
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
 | `DNS` | `223.5.5.5` | 上游 DNS 服务器地址（端口 :53 自动补全） |
-| `DNS_TIMEOUT` | `10s` | DNS 解析超时时间（WebUI 模式下在「全局设置」页面可配置） |
+| `DNS_TIMEOUT` | `10s` | DNS 解析超时时间 |
 | `DNS_FAIL_THRESHOLD` | `5` | 连续失败多少次后触发熔断 |
-
-### 腾讯云凭据
-
-| 变量 | 说明 |
-|------|------|
-| `TC_ACCESS_ID` | 腾讯云 API 密钥 ID（[获取地址](https://console.cloud.tencent.com/cam/capi)） |
-| `TC_ACCESS_KEY` | 腾讯云 API 密钥 Key |
-
-### 阿里云凭据
-
-| 变量 | 说明 |
-|------|------|
-| `ALI_ACCESS_ID` | 阿里云 AccessKey ID（[获取地址](https://ram.console.aliyun.com/manage/ak)） |
-| `ALI_ACCESS_KEY` | 阿里云 AccessKey Secret |
-
-### WebUI 配置
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `WEBUI_PORT` | `60200` | WebUI 监听端口（绑定 127.0.0.1，若被占用自动在 50000–65535 范围随机选择可用端口） |
+| `TC_ACCESS_ID` / `TC_ACCESS_KEY` | （凭据） | 腾讯云 API 密钥（[获取地址](https://console.cloud.tencent.com/cam/capi)） |
+| `ALI_ACCESS_ID` / `ALI_ACCESS_KEY` | （凭据） | 阿里云 AccessKey（[获取地址](https://ram.console.aliyun.com/manage/ak)） |
+| `WEBUI_PORT` | `60200` | WebUI 监听端口（绑定 127.0.0.1） |
 | `FWALIZER_DATA_DIR` | 各平台标准路径 | WebUI 数据存储目录（SQLite 数据库位置） |
 
----
-
-## 运行模式
-
-### .env 模式（服务器/容器部署）
-
-当检测到 `TARGETS` 环境变量或 `.env` 文件时自动进入。纯 headless 运行，日志输出到 stdout。
-
-```bash
-./fwalizer                    # 从 .env 加载配置并启动同步
-./fwalizer validate .env      # 仅校验配置，不启动
-./fwalizer version            # 显示版本号
-./fwalizer backup             # 备份 WebUI 数据库
-./fwalizer restore <文件>     # 从备份恢复数据库
-```
-
-### WebUI 模式（桌面/可视化管理）
-
-无 `.env` 文件时自动进入 WebUI 模式，配置存储在 SQLite 数据库中。
-
-- 默认地址：`http://127.0.0.1:60200`（端口被占用时自动选择可用端口）
-- 数据路径（自动选择）：
-  - macOS：`~/Library/Application Support/fwalizer/config.db`
-  - Linux：`~/.config/fwalizer/config.db`
-  - Windows：`%APPDATA%\fwalizer\config.db`
-- 可通过 `FWALIZER_DATA_DIR` 环境变量自定义数据目录
-- 支持通过浏览器添加/编辑/删除云资源目标和域名规则
-- 修改配置后自动热重载，无需重启
-- 仪表盘提供**同步全局开关**（暂停/开启，状态持久化，重启后保持）；「运行测试」页（`/run-test`）统一承载 Dry Run（逐条规则明细：协议/端口/动作/CIDR/描述，响应为 `{results, warnings}` 包装）与连接测试（15s 超时）；暂停状态下 Dry Run 与连接测试均可用
-
----
-
-## RULES 语法
+### RULES 语法（.env 模式）
 
 格式：`host|protocol|ports|action|targets|comment`
 
@@ -158,8 +206,6 @@ docker run -d --name fwalizer --restart=always \
 | action | 动作：`ACCEPT`（允许）/ `DROP`（拒绝） | `ACCEPT` |
 | targets | 目标编号（从 0 开始，留空或 `*` = 全部） | `0,2` |
 | comment | 可选备注 | `生产API` |
-
-### 示例
 
 ```env
 # 单域名 + 多端口
@@ -176,10 +222,6 @@ RULES=ping.example.com|ICMP|ALL|ACCEPT||允许Ping
 
 # TCP+UDP（仅阿里云 SWAS 原生支持，其他云自动拆分为两条规则）
 RULES=voice.example.com|TCP+UDP|5060|ACCEPT||SIP语音
-
-# 多条规则组合（逗号分隔 + 反斜杠换行）
-RULES=api.example.com|TCP|443|ACCEPT||API, \
-      vpn.example.com|UDP|1194|ACCEPT|1|VPN
 ```
 
 > **注意**：仅支持单台服务器场景（DNS 返回少量 IP），不支持 CDN 等返回大量 IP 的域名。
@@ -202,55 +244,6 @@ WebUI 模式下所有配置存储在 SQLite 数据库中，可通过 CLI 命令�
 
 ---
 
-## 桌面端系统托盘
-
-> ⚠️ **该功能已暂时搁置开发。** 桌面端（macOS 系统托盘 / Windows 托盘）因 Launch Services 兼容性问题无法正常启动，当前不提供桌面二进制 Release。请使用 WebUI 模式或 Docker 模式。详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)。
-
-<details>
-<summary>历史设计（点击展开）</summary>
-
-从 [GitHub Releases](https://github.com/alcaprophet/fwalizer/releases) 下载对应平台的桌面版：
-
-| 文件 | 平台 |
-|------|------|
-| `fwalizer-macOS-AppleSilicon.zip` | macOS（M 系列芯片） |
-| `fwalizer-macOS-Intel.zip` | macOS（Intel 芯片） |
-| `fwalizer-Windows.exe` | Windows |
-
-### macOS 使用
-
-1. 解压 zip，将 `FWAlizer.app` 拖入 `/Applications`
-2. **首次打开**需右键点击 →「打开」（因未签名公证，Gatekeeper 会拦截）
-3. 菜单栏出现托盘图标，自动打开浏览器进入 WebUI
-
-> ⚠️ 必须通过 `.app` 启动才显示托盘图标，直接在终端运行裸二进制时托盘不生效。
-
-### Windows 使用
-
-直接双击 `fwalizer-Windows.exe`，系统托盘出现图标。
-
-### 托盘功能
-
-- 托盘菜单：状态指示 / 打开配置面板 / 立即同步 / 开机自启 / 退出
-- 启动后自动打开浏览器进入 WebUI
-- 点击「退出」会等待当前同步轮次完成后再退出进程
-
-> macOS 开机自启通过 LaunchAgent plist 实现，Windows 通过注册表 Run 键实现。
-
-### 从源码编译桌面版
-
-```bash
-CGO_ENABLED=1 go build -tags desktop -o fwalizer .
-# macOS 还需手工创建 .app 包装才能使用托盘：
-# mkdir -p FWAlizer.app/Contents/MacOS
-# cp fwalizer FWAlizer.app/Contents/MacOS/
-# cp build/Info.plist FWAlizer.app/Contents/
-```
-
-</details>
-
----
-
 ## 告警通知
 
 在 WebUI 的「告警配置」页面中，可配置邮件（SMTP）和 Webhook 两种通知方式。启用后在发生同步错误或 DNS 解析失败时自动推送告警：
@@ -261,35 +254,56 @@ CGO_ENABLED=1 go build -tags desktop -o fwalizer .
 
 ---
 
-## 多云 API 权限
+## 多云 API 权限与 API 文档
 
-建议使用子账号 + 最小权限策略。
+### 权限建议
 
-### 腾讯云（CAM 子账号）
+使用子账号 + 最小权限策略。
+
+**腾讯云（CAM 子账号）**
 
 | 云产品 | 所需权限 |
 |--------|----------|
 | Lighthouse | `QcloudLighthouseFullAccess`（或自定义：`DescribeFirewallRules` + `CreateFirewallRules` + `DeleteFirewallRules`） |
 | CVM（VPC） | `QcloudVPCFullAccess`（或自定义：`DescribeSecurityGroupPolicies` + `CreateSecurityGroupPolicies` + `DeleteSecurityGroupPolicies`） |
 
-### 阿里云（RAM 子账号）
+**阿里云（RAM 子账号）**
 
 | 云产品 | 所需权限 |
 |--------|----------|
 | 轻量云（SWAS） | `AliyunSWASFullAccess`（或自定义：`swas:ListFirewallRules` + `swas:CreateFirewallRules` + `swas:DeleteFirewallRules`） |
 | ECS | `AliyunECSFullAccess`（或自定义：`ecs:DescribeSecurityGroupAttribute` + `ecs:AuthorizeSecurityGroup` + `ecs:RevokeSecurityGroup`） |
 
+### API 使用要求文档（PlatformAPIDocs/）
+
+仓库 `PlatformAPIDocs/` 目录存放各云平台 **API 使用要求** 文档（参数格式、字段长度限制、频率限制等）：
+
+| 目录 | 内容 |
+|------|------|
+| `PlatformAPIDocs/TencentLighthouseAPIGuide/` | 腾讯云轻量云防火墙 API 指南 |
+| `PlatformAPIDocs/TencentCVMAPIGuide/` | 腾讯云 CVM 安全组 API 指南 |
+| `PlatformAPIDocs/AliyunSWASAPIGuide/` | 阿里云轻量云（SWAS）API 指南 |
+| `PlatformAPIDocs/AliyunECSAPIGuide/` | 阿里云 ECS 安全组 API 指南 |
+| `PlatformAPIDocs/PlatformZoneGuide/` | 各平台地域与可用区指南（地域自动补全数据来源） |
+
 ---
 
 ## Docker 部署
 
-### 拉取镜像
+### WebUI 模式运行（推荐）
 
 ```bash
 docker pull ghcr.io/alcaprophet/fwalizer:latest
+
+docker run -d --name fwalizer --restart=always \
+  -p 60200:60200 \
+  -v fwalizer-data:/home/appuser/.config/fwalizer \
+  ghcr.io/alcaprophet/fwalizer:latest
 ```
 
-### .env 模式运行
+然后浏览器访问 `http://127.0.0.1:60200`。
+
+### .env 模式运行（备用/进阶）
 
 ```bash
 docker run -d --name fwalizer --restart=always \
@@ -297,34 +311,23 @@ docker run -d --name fwalizer --restart=always \
   ghcr.io/alcaprophet/fwalizer:latest
 ```
 
-### WebUI 模式运行
-
-```bash
-docker run -d --name fwalizer --restart=always \
-  -p 60200:60200 \
-  -v fwalizer-data:/home/appuser/.config/fwalizer \
-  ghcr.io/alcaprophet/fwalizer:latest
-```
-
 ### docker-compose 示例
 
+完整示例见 [docker-compose.yml.example](./docker-compose.yml.example)（默认推荐 WebUI 模式）：
+
 ```yaml
-version: "3.8"
 services:
   fwalizer:
     image: ghcr.io/alcaprophet/fwalizer:latest
     container_name: fwalizer
-    restart: always
+    restart: unless-stopped
+    ports:
+      - "60200:60200"              # WebUI 模式（推荐）
     volumes:
-      - ./.env:/app/.env:ro   # .env 模式
-    # 或 WebUI 模式：
-    # ports:
-    #   - "60200:60200"
+      - fwalizer_data:/app/data    # 数据持久化
+    # .env 模式（备用）：挂载 .env 并注释 ports
     # volumes:
-    #   - fwalizer-data:/home/appuser/.config/fwalizer
-
-# volumes:
-#   fwalizer-data:
+    #   - ./config/.env:/app/.env:ro
 ```
 
 ### 本地构建镜像
@@ -352,6 +355,12 @@ fwalizer/
 ├── webui/                   # WebUI 后端（HTTP API + 前端 embed）
 │   └── frontend/            # Vue 3 + Vite + Naive UI 前端源码
 ├── internal/                # 内部工具（端口转换、标签解析）
+├── ReadmeAsset/             # README 截图资源
+├── PlatformAPIDocs/          # 各云平台 API 使用要求 + 地域可用区指南文档
+├── HistoryDocs/             # 历史工程文档（Design1-3/Build1-4/Issue1-3，已存档）
+├── Design4.md               # 当前设计记录
+├── Build5.md                # 当前构建方案
+├── Issue4.md                # 当前问题追踪
 ├── version/                 # 版本信息（ldflags 注入）
 └── build/                   # Dockerfile
 ```
@@ -400,13 +409,13 @@ make build
 
 ## 常见问题（FAQ）
 
-### 1. 启动报错 "加载 .env 失败"？
+### 1. 首次启动后需要做什么？
 
-确保项目根目录存在 `.env` 文件。可以先复制模板：`cp .env.example .env`，然后填入实际配置。
+按仪表盘引导条顺序：先在「全局设置」填写云厂商 API 密钥，再在「云资源管理」添加目标，最后在「域名规则」添加规则。推荐先用「模拟测试」预览变更，确认无误后再开启同步。
 
 ### 2. 如何确认规则是否同步成功？
 
-查看日志输出（默认 `info` 级别会打印每次同步结果）。也可设置 `LOG_LEVEL=debug` 查看详细的 DNS 解析结果和 Diff 计算过程。
+打开「同步日志」页查看历史记录（每次同步的新增/删除计数与失败详情），或查看实时运行日志。`.env` 模式下查看 stdout 日志（默认 `info` 级别；`LOG_LEVEL=debug` 可查看详细解析与 Diff 过程）。
 
 ### 3. 本工具会不会删除我手动添加的防火墙规则？
 
@@ -418,7 +427,7 @@ make build
 
 ### 5. 支持 IPv6 吗？
 
-腾讯云 Lighthouse、CVM 和阿里云 ECS 支持 IPv6（AAAA 记录）。阿里云轻量云（SWAS）不支持 IPv6，解析到的 IPv6 地址会自动跳过。
+腾讯云 Lighthouse、CVM 和阿里云 ECS 支持 IPv6（AAAA 记录）。阿里云轻量云（SWAS）不支持 IPv6，解析到的 IPv6 地址会自动跳过。WebUI 模式下每条域名规则可独立开关 IPv6 解析。
 
 ### 6. 阿里云 SWAS 支持 DROP 规则吗？
 
@@ -434,7 +443,7 @@ make build
 
 ### 9. 桌面端托盘不出现？
 
-桌面端功能需要通过 `-tags desktop` 编译标签启用（需 CGO）。标准 `go build` 和 Docker 镜像不包含托盘功能。
+桌面端功能已**暂时搁置**（代码归档至 `desktop/`，详见 [FutureDesktopDevelop.md](./FutureDesktopDevelop.md)）。请使用 WebUI 模式或 Docker 模式。
 
 ### 10. 如何配置告警通知？
 
@@ -447,6 +456,18 @@ make build
 ### 12. WebUI 模式能否同时启动多个实例？
 
 **不能。** 程序通过 pidfile（`<数据目录>/fwalizer.pid`）检测已有实例，若检测到另一个 FWAlizer 进程正在运行，会拒绝启动并提示 PID。这避免了多实例操作同一 SQLite 数据库可能引起的问题。
+
+### 13. 如何切换明暗主题？
+
+侧边栏顶部 FWAlizer 标题右侧的 ☀️/🌙 开关即可切换；主题偏好持久化保存，重启后保持。
+
+### 14. 如何快速扫描并添加云资源？
+
+在「全局设置」的云厂商凭据卡片中选择云产品与地域，点击「扫描资源」列出该地域下的实例/安全组（仅只读查询，不修改任何云端配置）。随后在「云资源管理」添加目标时，资源 ID 可直接从扫描结果下拉选择，所选资源的地域会自动联动填入；未扫描或无结果时也可手动输入任意资源 ID 与地域（地域支持下拉补全或自由输入，兼容云平台新区域）。
+
+### 15. 清空所有数据会删除什么？
+
+「全局设置」页底部的「清空所有数据」按钮（红色警告，需二次确认）会清空全部业务数据：目标、规则、凭据、同步日志与扫描结果，数据库回到全新初始化状态。此操作不可恢复，操作前请确认或先使用 `./fwalizer backup` 备份。
 
 ---
 

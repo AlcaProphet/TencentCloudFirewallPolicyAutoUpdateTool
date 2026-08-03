@@ -1,5 +1,7 @@
 # FWAlizer 问题追踪（Issue3）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > 第13-16轮审查记录。第13-15轮（2026-07-27）已全部修复/验收通过；第16轮（2026-08-02）为结合 [Design2.md](./Design2.md)、[Build3.md](./Build3.md) 的全面代码检查，见 [六、第16轮](#六第16轮全面代码检查2026-08-02)。
 > 历史问题见 [Issue1.md](./Issue1.md) 和 [Issue2.md](./Issue2.md)（均已归档），历史构建计划见 [Build2.md](./Build2.md)（已归档）。
 
@@ -123,7 +125,7 @@
 
 | 检查项 | 结果 | 证据 |
 |--------|------|------|
-| `.dockerignore` 7 行 | ✅ | `Documents/` `*.md` `.env` `.git/` `Dockerfile` `.dockerignore` `Makefile` |
+| `.dockerignore` 7 行 | ✅ | `PlatformAPIDocs/` `*.md` `.env` `.git/` `Dockerfile` `.dockerignore` `Makefile` |
 | `.env.example` targets 从 0 开始 | ✅ | L35 `从 0 开始`；L40 `ACCEPT\|1`；L41 `ACCEPT\|0,2` |
 | `README.md` DNS `223.5.5.5` | ✅ | L91 |
 | `go.mod` `golang.org/x/sys` direct | ✅ | L14 无 `// indirect` |

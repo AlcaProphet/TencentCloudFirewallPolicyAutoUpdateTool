@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -52,6 +53,15 @@ type SyncLog struct {
 	Added     int       `json:"added"`
 	Deleted   int       `json:"deleted"`
 	Error     string    `json:"error"`
+}
+
+// ScannedResource 扫描到的云资源（用于添加目标时资源 ID 自动补全）
+type ScannedResource struct {
+	ID           int    `json:"id"`
+	CloudType    string `json:"cloud_type"`
+	Region       string `json:"region"`
+	ResourceID   string `json:"resource_id"`
+	ResourceName string `json:"resource_name"`
 }
 
 // OpenStore 打开或创建 SQLite 数据库
@@ -132,14 +142,26 @@ CREATE TABLE IF NOT EXISTS alert_webhook (
 	url TEXT DEFAULT '',
 	channel TEXT DEFAULT 'dingtalk'
 );
+CREATE TABLE IF NOT EXISTS scanned_resources (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	cloud_type TEXT NOT NULL,
+	region TEXT NOT NULL,
+	resource_id TEXT NOT NULL,
+	resource_name TEXT DEFAULT '',
+	scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("初始化表结构失败: %w", err)
 	}
-	// 迁移：为已有表补充列（忽略"列已存在"错误）
-	s.db.Exec("ALTER TABLE rules ADD COLUMN enable_ipv6 INTEGER DEFAULT 0")
-	s.db.Exec("ALTER TABLE alert_webhook ADD COLUMN channel TEXT DEFAULT 'dingtalk'")
+	// 迁移：为已有表补充列（"列已存在"属于正常迁移场景，仅忽略该错误；其他错误记录 WARN）
+	if _, err := s.db.Exec("ALTER TABLE rules ADD COLUMN enable_ipv6 INTEGER DEFAULT 0"); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		slog.Warn("迁移 rules 表失败", "error", err)
+	}
+	if _, err := s.db.Exec("ALTER TABLE alert_webhook ADD COLUMN channel TEXT DEFAULT 'dingtalk'"); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		slog.Warn("迁移 alert_webhook 表失败", "error", err)
+	}
 	return nil
 }
 
@@ -237,12 +259,15 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 
 // AddRule 添加域名规则
 func (s *Store) AddRule(r DomainRule) error {
-	targetsJSON, _ := json.Marshal(r.Targets)
+	targetsJSON, err := json.Marshal(r.Targets)
+	if err != nil {
+		return fmt.Errorf("序列化规则目标失败: %w", err)
+	}
 	enableIPv6 := 0
 	if r.EnableIPv6 {
 		enableIPv6 = 1
 	}
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		"INSERT INTO rules (host, protocol, ports, action, targets, comment, enable_ipv6) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6,
 	)
@@ -266,12 +291,15 @@ func (s *Store) UpdateTarget(id int, t TargetConfig) error {
 
 // UpdateRule 更新域名规则
 func (s *Store) UpdateRule(id int, r DomainRule) error {
-	targetsJSON, _ := json.Marshal(r.Targets)
+	targetsJSON, err := json.Marshal(r.Targets)
+	if err != nil {
+		return fmt.Errorf("序列化规则目标失败: %w", err)
+	}
 	enableIPv6 := 0
 	if r.EnableIPv6 {
 		enableIPv6 = 1
 	}
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		"UPDATE rules SET host = ?, protocol = ?, ports = ?, action = ?, targets = ?, comment = ?, enable_ipv6 = ? WHERE id = ?",
 		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6, id,
 	)
@@ -281,6 +309,16 @@ func (s *Store) UpdateRule(id int, r DomainRule) error {
 // ClearAll 清空所有配置（用于配置导入前重置）
 func (s *Store) ClearAll() error {
 	_, err := s.db.Exec("DELETE FROM targets; DELETE FROM rules; DELETE FROM settings;")
+	return err
+}
+
+// ResetAll 清空全部业务数据（目标、规则、凭据、日志、告警、扫描结果），等效重新初始化
+// 与 ClearAll 的区别：ResetAll 覆盖全部表，用于「清空所有数据」功能
+func (s *Store) ResetAll() error {
+	_, err := s.db.Exec(
+		"DELETE FROM targets; DELETE FROM rules; DELETE FROM settings; DELETE FROM sync_logs;" +
+			"DELETE FROM alert_email; DELETE FROM alert_webhook; DELETE FROM scanned_resources;",
+	)
 	return err
 }
 
@@ -295,6 +333,52 @@ func (s *Store) WithTransaction(fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ReplaceScannedResources 覆盖式保存某云厂商+地域的扫描结果（先删后插）
+func (s *Store) ReplaceScannedResources(cloudType, region string, resources []ScannedResource) error {
+	return s.WithTransaction(func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM scanned_resources WHERE cloud_type = ? AND region = ?", cloudType, region); err != nil {
+			return fmt.Errorf("清理旧扫描结果失败: %w", err)
+		}
+		for _, r := range resources {
+			if _, err := tx.Exec(
+				"INSERT INTO scanned_resources (cloud_type, region, resource_id, resource_name) VALUES (?, ?, ?, ?)",
+				cloudType, region, r.ResourceID, r.ResourceName,
+			); err != nil {
+				return fmt.Errorf("写入扫描结果失败: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// GetScannedResources 获取某云厂商的扫描结果（跨地域汇总，按 resource_id 排序）
+func (s *Store) GetScannedResources(cloudType string) ([]ScannedResource, error) {
+	rows, err := s.db.Query(
+		"SELECT id, cloud_type, region, resource_id, resource_name FROM scanned_resources WHERE cloud_type = ? ORDER BY resource_id",
+		cloudType,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	resources := make([]ScannedResource, 0)
+	for rows.Next() {
+		var r ScannedResource
+		if err := rows.Scan(&r.ID, &r.CloudType, &r.Region, &r.ResourceID, &r.ResourceName); err != nil {
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
+}
+
+// DeleteScannedResources 清理某云厂商的全部扫描结果
+func (s *Store) DeleteScannedResources(cloudType string) error {
+	_, err := s.db.Exec("DELETE FROM scanned_resources WHERE cloud_type = ?", cloudType)
+	return err
 }
 
 // BatchAddTargets 批量添加目标
@@ -334,12 +418,15 @@ func (s *Store) AddTargetTx(tx *sql.Tx, t TargetConfig) error {
 
 // AddRuleTx 在事务中添加域名规则
 func (s *Store) AddRuleTx(tx *sql.Tx, r DomainRule) error {
-	targetsJSON, _ := json.Marshal(r.Targets)
+	targetsJSON, err := json.Marshal(r.Targets)
+	if err != nil {
+		return fmt.Errorf("序列化规则目标失败: %w", err)
+	}
 	enableIPv6 := 0
 	if r.EnableIPv6 {
 		enableIPv6 = 1
 	}
-	_, err := tx.Exec(
+	_, err = tx.Exec(
 		"INSERT INTO rules (host, protocol, ports, action, targets, comment, enable_ipv6) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6,
 	)
@@ -474,6 +561,12 @@ func (s *Store) GetSyncLogs(limit int) ([]SyncLog, error) {
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
+}
+
+// ClearSyncLogs 清空全部同步历史记录（仅 sync_logs 表，不影响 targets/rules/settings）
+func (s *Store) ClearSyncLogs() error {
+	_, err := s.db.Exec("DELETE FROM sync_logs")
+	return err
 }
 
 // LoadConfig 从 SQLite 构建 Config

@@ -1,5 +1,7 @@
 # FWAlizer 问题追踪（历史归档）
 
+> ⚠️ **已存档**：本文档已移入 `HistoryDocs/`，仅作历史记录与核查参考，**不再用于构建**。当前活跃文档：编码指令 [AGENTS.md](../AGENTS.md)、设计记录 [Design4.md](../Design4.md)、构建方案 [Build5.md](../Build5.md)、问题记录 [Issue4.md](../Issue4.md)。
+
 > 第11-12轮审查（2026-07-26），以 Design1.md、Build1.md、AGENTS.md 为基准。
 > **全部 11 项问题已于 Build2.md 实施完毕，最终验收结果见 [Issue3.md 全量复核记录](./Issue3.md#全量复核记录)。**
 > 第1-10轮已修复项及独有待规划项见 [Issue1.md](./Issue1.md)。
