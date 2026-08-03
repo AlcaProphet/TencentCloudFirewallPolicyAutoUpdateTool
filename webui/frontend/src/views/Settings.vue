@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NForm, NFormItem, NInput, NSelect, NButton, NSpace, NCard, NPopconfirm, useMessage, useThemeVars } from 'naive-ui'
+import { NForm, NFormItem, NInput, NSelect, NButton, NSpace, NCard, NGrid, NGi, NPopconfirm, NModal, useMessage, useThemeVars } from 'naive-ui'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { request } from '../api'
 import { useZones } from '../composables/useZones'
@@ -15,7 +15,7 @@ const intervalPattern = /^\d+(ms|s|m|h)$/
 
 // ─── 扫描资源（卡片内云产品 + 地域选择 → 扫描 → 结果列表） ───
 const { load: loadZones, regionOptions } = useZones()
-const { load: loadScanned, scan: scanResources, clear: clearResources, clearAllCache, resourcesOf } = useScannedResources()
+const { load: loadScanned, scan: scanResources, clear: clearResources, resourcesOf } = useScannedResources()
 
 // product/region 初始为 null：选择框显示占位提示（选择云产品 / 选择地域）
 // hasScanned：是否已执行过扫描（区分"未扫描引导"与"扫描无结果"两种空状态）
@@ -110,9 +110,14 @@ async function save() {
   }
 }
 
-function exportConfig() {
+// ─── 导出配置（NPopconfirm 确认后下载；配置文件不含凭据） ───
+function doExport() {
   window.open('/api/config/export', '_blank')
 }
+
+// ─── 导入配置（选中文件解析后弹确认，确认后执行；导入会清空现有凭据） ───
+const showImportConfirm = ref(false)
+const pendingImport = ref<any>(null)
 
 async function importConfig(e: Event) {
   const input = e.target as HTMLInputElement
@@ -127,6 +132,15 @@ async function importConfig(e: Event) {
     input.value = ''
     return
   }
+  pendingImport.value = data
+  showImportConfirm.value = true
+  input.value = '' // 重置文件选择，允许再次选择同一文件
+}
+
+async function confirmImport() {
+  showImportConfirm.value = false
+  const data = pendingImport.value
+  if (!data) return
   try {
     await request('/api/config/import', {
       method: 'POST',
@@ -136,7 +150,6 @@ async function importConfig(e: Event) {
     message.success('导入成功')
   } catch (err: any) {
     message.error(`导入失败: ${err.message}`) // RequestError 携带后端 error 信息
-    input.value = ''
     return
   }
   // 导入成功后刷新设置表单（失败不影响导入结果）
@@ -145,7 +158,6 @@ async function importConfig(e: Event) {
   } catch (err: any) {
     message.error(`导入成功，但刷新设置失败: ${err.message}`)
   }
-  input.value = ''
 }
 </script>
 
@@ -153,100 +165,124 @@ async function importConfig(e: Event) {
   <div>
     <h2>全局设置</h2>
 
-    <!-- 云厂商凭据卡片：卡片内凭据输入 + 扫描资源（云产品/地域选择 → 扫描 → 结果列表） -->
-    <NSpace vertical style="width: 100%">
-      <NCard title="腾讯云凭据" size="small">
-        <NForm label-placement="left" label-width="80">
-          <NFormItem label="SecretId">
-            <NInput v-model:value="settings.tc_access_id" type="password" show-password-on="click" placeholder="AKIDxxx" />
-          </NFormItem>
-          <NFormItem label="SecretKey">
-            <NInput v-model:value="settings.tc_access_key" type="password" show-password-on="click" placeholder="SecretKey" />
-          </NFormItem>
-        </NForm>
-        <NSpace align="center" style="margin-bottom: 8px">
-          <NSelect v-model:value="tcScan.product" :options="tcProductOptions" placeholder="选择云产品" style="width: 150px" />
-          <NSelect v-model:value="tcScan.region" :options="regionOptions(tcScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 230px" />
-          <NButton type="primary" size="small" :loading="tcScan.loading" @click="runScan(tcScan)">扫描资源</NButton>
-          <NButton size="small" @click="clearScan(tcScan)">清空</NButton>
-        </NSpace>
-        <p v-if="tcScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ tcScan.error }}</p>
-        <div v-if="tcScanned.length" :style="{ borderTop: `1px solid ${themeVars.dividerColor}`, paddingTop: '8px' }">
-          <div :style="{ display: 'flex', gap: '16px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
-            <span style="min-width: 180px">资源名称</span>
-            <span style="min-width: 200px">资源ID</span>
-            <span>地域</span>
+    <!-- 云厂商凭据卡片：并排 2 列网格（参照仪表盘布局）；卡片内 label 置顶避免长文本换行挤占 -->
+    <NGrid :cols="2" :x-gap="16" :y-gap="16">
+      <NGi>
+        <NCard title="腾讯云凭据" size="small">
+          <NForm label-placement="top">
+            <NFormItem label="SecretId">
+              <NInput v-model:value="settings.tc_access_id" type="password" show-password-on="click" placeholder="AKIDxxx" />
+            </NFormItem>
+            <NFormItem label="SecretKey">
+              <NInput v-model:value="settings.tc_access_key" type="password" show-password-on="click" placeholder="SecretKey" />
+            </NFormItem>
+          </NForm>
+          <NSpace align="center" style="margin-bottom: 8px">
+            <NSelect v-model:value="tcScan.product" :options="tcProductOptions" placeholder="选择云产品" style="width: 150px" />
+            <NSelect v-model:value="tcScan.region" :options="regionOptions(tcScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 210px" />
+            <NButton type="primary" size="small" :loading="tcScan.loading" @click="runScan(tcScan)">扫描资源</NButton>
+            <NButton size="small" @click="clearScan(tcScan)">清空</NButton>
+          </NSpace>
+          <p v-if="tcScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ tcScan.error }}</p>
+          <div v-if="tcScanned.length" :style="{ borderTop: `1px solid ${themeVars.dividerColor}`, paddingTop: '8px' }">
+            <div :style="{ display: 'flex', gap: '12px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
+              <span style="min-width: 110px">资源名称</span>
+              <span style="min-width: 150px">资源ID</span>
+              <span>地域</span>
+            </div>
+            <div v-for="r in tcScanned" :key="r.id" :style="{ display: 'flex', gap: '12px', fontSize: '12px', padding: '3px 0', color: themeVars.textColor1 }">
+              <span style="min-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_name || '-' }}</span>
+              <span style="min-width: 150px">{{ r.resource_id }}</span>
+              <span>{{ r.region }}</span>
+            </div>
           </div>
-          <div v-for="r in tcScanned" :key="r.id" :style="{ display: 'flex', gap: '16px', fontSize: '12px', padding: '3px 0', color: themeVars.textColor1 }">
-            <span style="min-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_name || '-' }}</span>
-            <span style="min-width: 200px">{{ r.resource_id }}</span>
-            <span>{{ r.region }}</span>
-          </div>
-        </div>
-        <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ tcEmptyHint }}</div>
-      </NCard>
+          <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ tcEmptyHint }}</div>
+        </NCard>
+      </NGi>
 
-      <NCard title="阿里云凭据" size="small">
-        <NForm label-placement="left" label-width="80">
-          <NFormItem label="AccessKeyId">
-            <NInput v-model:value="settings.ali_access_id" type="password" show-password-on="click" placeholder="LTAIxxx" />
-          </NFormItem>
-          <NFormItem label="AccessKeySecret">
-            <NInput v-model:value="settings.ali_access_key" type="password" show-password-on="click" placeholder="AccessKeySecret" />
-          </NFormItem>
-        </NForm>
-        <NSpace align="center" style="margin-bottom: 8px">
-          <NSelect v-model:value="aliScan.product" :options="aliProductOptions" placeholder="选择云产品" style="width: 150px" />
-          <NSelect v-model:value="aliScan.region" :options="regionOptions(aliScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 230px" />
-          <NButton type="primary" size="small" :loading="aliScan.loading" @click="runScan(aliScan)">扫描资源</NButton>
-          <NButton size="small" @click="clearScan(aliScan)">清空</NButton>
-        </NSpace>
-        <p v-if="aliScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ aliScan.error }}</p>
-        <div v-if="aliScanned.length" :style="{ borderTop: `1px solid ${themeVars.dividerColor}`, paddingTop: '8px' }">
-          <div :style="{ display: 'flex', gap: '16px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
-            <span style="min-width: 180px">资源名称</span>
-            <span style="min-width: 200px">资源ID</span>
-            <span>地域</span>
+      <NGi>
+        <NCard title="阿里云凭据" size="small">
+          <NForm label-placement="top">
+            <NFormItem label="AccessKeyId">
+              <NInput v-model:value="settings.ali_access_id" type="password" show-password-on="click" placeholder="LTAIxxx" />
+            </NFormItem>
+            <NFormItem label="AccessKeySecret">
+              <NInput v-model:value="settings.ali_access_key" type="password" show-password-on="click" placeholder="AccessKeySecret" />
+            </NFormItem>
+          </NForm>
+          <NSpace align="center" style="margin-bottom: 8px">
+            <NSelect v-model:value="aliScan.product" :options="aliProductOptions" placeholder="选择云产品" style="width: 150px" />
+            <NSelect v-model:value="aliScan.region" :options="regionOptions(aliScan.product || '')" filterable tag clearable placeholder="选择地域" style="width: 210px" />
+            <NButton type="primary" size="small" :loading="aliScan.loading" @click="runScan(aliScan)">扫描资源</NButton>
+            <NButton size="small" @click="clearScan(aliScan)">清空</NButton>
+          </NSpace>
+          <p v-if="aliScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ aliScan.error }}</p>
+          <div v-if="aliScanned.length" :style="{ borderTop: `1px solid ${themeVars.dividerColor}`, paddingTop: '8px' }">
+            <div :style="{ display: 'flex', gap: '12px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
+              <span style="min-width: 110px">资源名称</span>
+              <span style="min-width: 150px">资源ID</span>
+              <span>地域</span>
+            </div>
+            <div v-for="r in aliScanned" :key="r.id" :style="{ display: 'flex', gap: '12px', fontSize: '12px', padding: '3px 0', color: themeVars.textColor1 }">
+              <span style="min-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_name || '-' }}</span>
+              <span style="min-width: 150px">{{ r.resource_id }}</span>
+              <span>{{ r.region }}</span>
+            </div>
           </div>
-          <div v-for="r in aliScanned" :key="r.id" :style="{ display: 'flex', gap: '16px', fontSize: '12px', padding: '3px 0', color: themeVars.textColor1 }">
-            <span style="min-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.resource_name || '-' }}</span>
-            <span style="min-width: 200px">{{ r.resource_id }}</span>
-            <span>{{ r.region }}</span>
-          </div>
-        </div>
-        <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ aliEmptyHint }}</div>
-      </NCard>
-    </NSpace>
+          <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ aliEmptyHint }}</div>
+        </NCard>
+      </NGi>
+    </NGrid>
 
     <h3 style="margin: 16px 0 12px">全局设置</h3>
-    <NForm :model="settings" label-placement="left" label-width="160">
-      <NFormItem label="TAG">
-        <NInput v-model:value="settings.tag" />
-      </NFormItem>
-      <NFormItem label="同步间隔">
-        <NInput v-model:value="settings.interval" placeholder="5m（30s / 5m / 1h）" />
-      </NFormItem>
-      <NFormItem label="DNS 服务器">
-        <NInput v-model:value="settings.dns" />
-      </NFormItem>
-      <NFormItem label="DNS 超时">
-        <NInput v-model:value="settings.dns_timeout" placeholder="10s" />
-      </NFormItem>
-      <NFormItem label="DNS 失败阈值">
-        <NInput v-model:value="settings.dns_fail_threshold" placeholder="5" />
-      </NFormItem>
-      <NFormItem label="日志级别">
-        <NSelect v-model:value="settings.log_level" :options="[
-          { label: 'Debug', value: 'debug' },
-          { label: 'Info', value: 'info' },
-          { label: 'Warn', value: 'warn' },
-          { label: 'Error', value: 'error' },
-        ]" />
-      </NFormItem>
+    <NForm :model="settings" label-placement="left" label-width="120">
+      <NGrid :cols="2" :x-gap="16">
+        <NGi>
+          <NFormItem label="TAG">
+            <NInput v-model:value="settings.tag" />
+          </NFormItem>
+        </NGi>
+        <NGi>
+          <NFormItem label="同步间隔">
+            <NInput v-model:value="settings.interval" placeholder="5m（30s / 5m / 1h）" />
+          </NFormItem>
+        </NGi>
+        <NGi>
+          <NFormItem label="DNS 服务器">
+            <NInput v-model:value="settings.dns" />
+          </NFormItem>
+        </NGi>
+        <NGi>
+          <NFormItem label="DNS 超时">
+            <NInput v-model:value="settings.dns_timeout" placeholder="10s" />
+          </NFormItem>
+        </NGi>
+        <NGi>
+          <NFormItem label="DNS 失败阈值">
+            <NInput v-model:value="settings.dns_fail_threshold" placeholder="5" />
+          </NFormItem>
+        </NGi>
+        <NGi>
+          <NFormItem label="日志级别">
+            <NSelect v-model:value="settings.log_level" :options="[
+              { label: 'Debug', value: 'debug' },
+              { label: 'Info', value: 'info' },
+              { label: 'Warn', value: 'warn' },
+              { label: 'Error', value: 'error' },
+            ]" />
+          </NFormItem>
+        </NGi>
+      </NGrid>
       <NFormItem>
         <NSpace>
           <NButton type="primary" @click="save">保存</NButton>
-          <NButton @click="exportConfig">导出配置</NButton>
+          <!-- 导出确认：配置文件不含凭据 -->
+          <NPopconfirm @positive-click="doExport">
+            <template #trigger>
+              <NButton>导出配置</NButton>
+            </template>
+            配置文件不包含云厂商凭据（安全设计），后续导入恢复后需重新填写凭据，是否继续导出？
+          </NPopconfirm>
           <label>
             <NButton tag="span">导入配置</NButton>
             <input type="file" accept=".json" style="display: none" @change="importConfig" />
@@ -261,5 +297,10 @@ async function importConfig(e: Event) {
         </NSpace>
       </NFormItem>
     </NForm>
+
+    <!-- 导入确认弹窗：告知将替换数据并清空凭据 -->
+    <NModal v-model:show="showImportConfirm" preset="dialog" title="确认导入配置" :positive-text="'确认导入'" :negative-text="'取消'" @positive-click="confirmImport">
+      导入将替换当前全部目标、规则与设置，并清空现有云厂商凭据（配置文件中不含凭据），导入完成后需重新填写凭据。确认继续？
+    </NModal>
   </div>
 </template>
