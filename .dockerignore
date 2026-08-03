@@ -5,3 +5,10 @@ PlatformAPIDocs/
 Dockerfile
 .dockerignore
 Makefile
+# 构建产物与本地缓存（避免污染构建上下文）
+fwalizer
+ReadmeAsset/
+HistoryDocs/
+.qoder/
+webui/frontend/node_modules/
+webui/frontend/dist/

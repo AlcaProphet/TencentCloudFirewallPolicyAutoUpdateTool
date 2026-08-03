@@ -45,7 +45,17 @@ func (d *Deps) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	d.notifyReload()
+	// 仅业务配置变更时触发重载：theme 键仅前端展示（不参与后端配置加载），单独变更跳过重载
+	needsReload := false
+	for k := range settings {
+		if k != "theme" {
+			needsReload = true
+			break
+		}
+	}
+	if needsReload {
+		d.notifyReload()
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "保存成功"})
 }
 

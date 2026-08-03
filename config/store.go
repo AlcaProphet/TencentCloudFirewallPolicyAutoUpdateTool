@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -154,9 +155,13 @@ CREATE TABLE IF NOT EXISTS scanned_resources (
 	if err != nil {
 		return fmt.Errorf("初始化表结构失败: %w", err)
 	}
-	// 迁移：为已有表补充列（忽略"列已存在"错误）
-	s.db.Exec("ALTER TABLE rules ADD COLUMN enable_ipv6 INTEGER DEFAULT 0")
-	s.db.Exec("ALTER TABLE alert_webhook ADD COLUMN channel TEXT DEFAULT 'dingtalk'")
+	// 迁移：为已有表补充列（"列已存在"属于正常迁移场景，仅忽略该错误；其他错误记录 WARN）
+	if _, err := s.db.Exec("ALTER TABLE rules ADD COLUMN enable_ipv6 INTEGER DEFAULT 0"); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		slog.Warn("迁移 rules 表失败", "error", err)
+	}
+	if _, err := s.db.Exec("ALTER TABLE alert_webhook ADD COLUMN channel TEXT DEFAULT 'dingtalk'"); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		slog.Warn("迁移 alert_webhook 表失败", "error", err)
+	}
 	return nil
 }
 
@@ -254,12 +259,15 @@ func (s *Store) GetRules() ([]DomainRule, error) {
 
 // AddRule 添加域名规则
 func (s *Store) AddRule(r DomainRule) error {
-	targetsJSON, _ := json.Marshal(r.Targets)
+	targetsJSON, err := json.Marshal(r.Targets)
+	if err != nil {
+		return fmt.Errorf("序列化规则目标失败: %w", err)
+	}
 	enableIPv6 := 0
 	if r.EnableIPv6 {
 		enableIPv6 = 1
 	}
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		"INSERT INTO rules (host, protocol, ports, action, targets, comment, enable_ipv6) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6,
 	)
@@ -283,12 +291,15 @@ func (s *Store) UpdateTarget(id int, t TargetConfig) error {
 
 // UpdateRule 更新域名规则
 func (s *Store) UpdateRule(id int, r DomainRule) error {
-	targetsJSON, _ := json.Marshal(r.Targets)
+	targetsJSON, err := json.Marshal(r.Targets)
+	if err != nil {
+		return fmt.Errorf("序列化规则目标失败: %w", err)
+	}
 	enableIPv6 := 0
 	if r.EnableIPv6 {
 		enableIPv6 = 1
 	}
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		"UPDATE rules SET host = ?, protocol = ?, ports = ?, action = ?, targets = ?, comment = ?, enable_ipv6 = ? WHERE id = ?",
 		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6, id,
 	)
@@ -407,12 +418,15 @@ func (s *Store) AddTargetTx(tx *sql.Tx, t TargetConfig) error {
 
 // AddRuleTx 在事务中添加域名规则
 func (s *Store) AddRuleTx(tx *sql.Tx, r DomainRule) error {
-	targetsJSON, _ := json.Marshal(r.Targets)
+	targetsJSON, err := json.Marshal(r.Targets)
+	if err != nil {
+		return fmt.Errorf("序列化规则目标失败: %w", err)
+	}
 	enableIPv6 := 0
 	if r.EnableIPv6 {
 		enableIPv6 = 1
 	}
-	_, err := tx.Exec(
+	_, err = tx.Exec(
 		"INSERT INTO rules (host, protocol, ports, action, targets, comment, enable_ipv6) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		r.Host, r.Protocol, r.Ports, r.Action, string(targetsJSON), r.Comment, enableIPv6,
 	)

@@ -1,5 +1,5 @@
-# 前端构建阶段
-FROM node:20-alpine AS frontend-builder
+# 前端构建阶段（与 CI 的 setup-node 版本保持一致，见 docker-publish.yml）
+FROM node:24-alpine AS frontend-builder
 WORKDIR /src/webui/frontend
 COPY webui/frontend/package*.json ./
 RUN npm ci
