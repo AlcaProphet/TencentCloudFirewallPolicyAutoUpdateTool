@@ -172,10 +172,8 @@ const columns = [
 
 <template>
   <div>
-    <NSpace justify="space-between" align="center">
-      <h2>云资源管理</h2>
-      <NButton type="primary" size="small" @click="openAdd">添加目标</NButton>
-    </NSpace>
+    <h2>云资源管理</h2>
+    <NButton type="primary" size="large" style="margin: 8px 0 12px" @click="openAdd">添加目标</NButton>
     <NDataTable :columns="columns" :data="targets" :bordered="true" />
 
     <NModal v-model:show="showModal" :title="editingId ? '编辑目标' : '添加目标'" preset="card" style="width: 500px">

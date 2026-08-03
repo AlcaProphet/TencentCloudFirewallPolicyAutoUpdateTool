@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 同步日志页：历史记录（最顶部）+ 实时运行日志（默认展开）
 // 历史记录：failed 可点击查看错误详情；支持清空（DELETE /api/sync/logs）
-import { NDataTable, NTag, NModal, NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui'
+import { NDataTable, NTag, NModal, NButton, NSpace, useMessage } from 'naive-ui'
 import { ref, onMounted, onUnmounted, h } from 'vue'
 import { request } from '../api'
 import type { SyncLogEntry } from '../types'
@@ -59,7 +59,11 @@ function openError(row: SyncLogEntry) {
   showErrorModal.value = true
 }
 
+// 历史记录清空确认（卡片式弹窗）
+const showClearConfirm = ref(false)
+
 async function clearLogs() {
+  showClearConfirm.value = false
   try {
     await request('/api/sync/logs', { method: 'DELETE' })
     logs.value = []
@@ -94,24 +98,28 @@ const columns = [
   <div>
     <h2>同步日志</h2>
 
-    <!-- 历史记录（最顶部，Build4 Step 4：改进 5） -->
-    <NSpace justify="space-between" align="center">
-      <h3 style="margin: 0">历史记录</h3>
-      <NSpace>
-        <NButton size="small" @click="loadLogs">刷新</NButton>
-        <NPopconfirm @positive-click="clearLogs">
-          <template #trigger>
-            <NButton size="small" type="error" tertiary>清空记录</NButton>
-          </template>
-          将清空全部同步历史记录，此操作不可恢复
-        </NPopconfirm>
-      </NSpace>
+    <!-- 刷新 / 清空按钮：置于页面标题下方（改进：从历史记录标题行移出） -->
+    <NSpace style="margin: 8px 0 12px">
+      <NButton size="large" @click="loadLogs">刷新</NButton>
+      <NButton size="large" type="error" tertiary @click="showClearConfirm = true">清空记录</NButton>
     </NSpace>
+
+    <!-- 历史记录（最顶部，Build4 Step 4：改进 5） -->
+    <h3 style="margin: 0">历史记录</h3>
     <NDataTable :columns="columns" :data="logs" :bordered="true" :max-height="400" style="margin-top: 12px" />
 
     <!-- 实时运行日志（常驻展开，Build4 Step 11：移除折叠控件） -->
     <h3 style="margin-top: 16px">运行日志（实时）</h3>
     <pre style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;">{{ logLines.join('\n') || '等待日志输出...' }}</pre>
+
+    <!-- 清空历史记录确认弹窗（卡片式） -->
+    <NModal v-model:show="showClearConfirm" preset="card" title="清空历史记录" style="width: 420px">
+      <p style="margin: 0 0 16px; line-height: 1.7">将清空全部同步历史记录，此操作不可恢复。确认继续？</p>
+      <NSpace justify="end">
+        <NButton size="large" @click="showClearConfirm = false">取消</NButton>
+        <NButton type="error" size="large" @click="clearLogs">确认清空</NButton>
+      </NSpace>
+    </NModal>
 
     <!-- failed 错误报告弹窗（Build4 Step 4：改进 9） -->
     <NModal v-model:show="showErrorModal" preset="card" title="同步失败详情" style="width: 600px">

@@ -10,6 +10,45 @@ const router = useRouter()
 const activeKey = ref('/')
 const { theme, applyTheme, setTheme } = useSettings()
 
+// 全局主题覆盖：字号 16px + 按钮高度统一放大（明暗主题共用）
+// 注意：naive-ui 组件字号为分尺寸变量（fontSizeTiny/Small/Medium/Large），需逐尺寸覆盖
+const themeOverrides = {
+  common: { fontSize: '16px' },
+  Button: {
+    heightLarge: '44px',
+    heightMedium: '40px',
+    heightSmall: '36px',
+    heightTiny: '28px',
+    fontSizeLarge: '16px',
+    fontSizeMedium: '16px',
+    fontSizeSmall: '15px',
+    fontSizeTiny: '13px',
+  },
+  Input: {
+    fontSizeLarge: '17px',
+    fontSizeMedium: '16px',
+    fontSizeSmall: '15px',
+    fontSizeTiny: '15px',
+  },
+  InternalSelection: {
+    fontSizeLarge: '17px',
+    fontSizeMedium: '16px',
+    fontSizeSmall: '15px',
+    fontSizeTiny: '15px',
+  },
+  Form: {
+    labelFontSizeTopLarge: '16px',
+    labelFontSizeTopMedium: '16px',
+    labelFontSizeLeftLarge: '16px',
+    labelFontSizeLeftMedium: '16px',
+  },
+  DataTable: {
+    fontSizeLarge: '16px',
+    fontSizeMedium: '15px',
+    fontSizeSmall: '14px',
+  },
+}
+
 const menuOptions = [
   { label: '仪表盘', key: '/' },
   { label: '云资源管理', key: '/targets' },
@@ -29,7 +68,7 @@ onMounted(applyTheme)
 </script>
 
 <template>
-  <NConfigProvider :theme="theme === 'dark' ? darkTheme : null">
+  <NConfigProvider :theme="theme === 'dark' ? darkTheme : null" :theme-overrides="themeOverrides">
     <NMessageProvider>
       <NLayout has-sider style="height: 100vh">
         <NLayoutSider bordered :width="200">

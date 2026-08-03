@@ -134,10 +134,8 @@ const columns = [
 
 <template>
   <div>
-    <NSpace justify="space-between" align="center">
-      <h2>域名规则</h2>
-      <NButton type="primary" size="small" @click="openAdd">添加规则</NButton>
-    </NSpace>
+    <h2>域名规则</h2>
+    <NButton type="primary" size="large" style="margin: 8px 0 12px" @click="openAdd">添加规则</NButton>
     <NDataTable :columns="columns" :data="rules" :bordered="true" />
 
     <NModal v-model:show="showModal" :title="editingId ? '编辑规则' : '添加规则'" preset="card" style="width: 500px">
