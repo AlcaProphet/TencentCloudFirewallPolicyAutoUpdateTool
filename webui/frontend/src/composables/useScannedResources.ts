@@ -1,5 +1,5 @@
 // useScannedResources 扫描资源共享逻辑：GET/POST/DELETE /api/scanned-resources
-// 消费方：Settings.vue（卡片内扫描与结果列表）、Targets.vue / RunTest.vue（资源 ID 自动补全）
+// 消费方：Settings.vue（卡片内扫描与结果列表）、Targets.vue（资源 ID 自动补全）
 // 模块级单例缓存：按 cloud_type 缓存扫描结果，避免重复请求
 import { ref } from 'vue'
 import type { SelectOption } from 'naive-ui'

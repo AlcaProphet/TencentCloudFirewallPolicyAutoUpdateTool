@@ -110,7 +110,7 @@ onUnmounted(() => {
         <NCard title="同步引擎" style="min-height: 200px">
           <div :style="{ fontSize: '28px', fontWeight: 600, marginTop: '20px', color: engineTag.color }">{{ engineTag.text }}</div>
           <!-- NTag 已移除（Build4 Step 9：状态显示去重，唯一展示） -->
-          <div style="font-size: 13px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；模拟测试与连接测试在「运行测试」页使用</div>
+          <div style="font-size: 14px; color: #888; margin-top: 8px">开启后按同步间隔自动执行；变更预览请使用「模拟测试」页</div>
         </NCard>
       </NGi>
       <NGi>
@@ -118,7 +118,7 @@ onUnmounted(() => {
           <div style="font-size: 24px; font-weight: 600; margin-top: 20px">
             {{ status.last_sync ? new Date(status.last_sync).toLocaleString() : '暂无' }}
           </div>
-          <div style="font-size: 13px; color: #888; margin-top: 8px">最近一轮同步完成时间</div>
+          <div style="font-size: 14px; color: #888; margin-top: 8px">最近一轮同步完成时间</div>
         </NCard>
       </NGi>
       <NGi>
@@ -147,7 +147,7 @@ onUnmounted(() => {
               {{ status.enabled ? '暂停同步' : '开启同步' }}
             </NButton>
           </NSpace>
-          <div style="font-size: 13px; color: #888; margin-top: 16px">同步全局开关状态与「全局设置」中持久化配置一致</div>
+          <div style="font-size: 14px; color: #888; margin-top: 16px">同步全局开关状态与「全局设置」中持久化配置一致</div>
         </NCard>
       </NGi>
     </NGrid>

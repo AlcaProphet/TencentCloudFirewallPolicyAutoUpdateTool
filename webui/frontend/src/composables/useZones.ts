@@ -1,5 +1,5 @@
 // useZones 地域数据共享逻辑：GET /api/zones 按 cloud_type 构造自动补全选项
-// 消费方：Targets.vue（添加/编辑目标弹窗）、RunTest.vue（连接测试表单）
+// 消费方：Targets.vue（添加/编辑目标弹窗）
 // 模块级单例状态：多组件共享一份数据，避免重复请求
 import { ref } from 'vue'
 import type { SelectOption } from 'naive-ui'

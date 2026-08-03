@@ -59,7 +59,7 @@ const menuOptions = [
   { label: '域名规则', key: '/rules' },
   { label: '全局设置', key: '/settings' },
   { label: '同步日志', key: '/logs' },
-  { label: '运行测试', key: '/run-test' },
+  { label: '模拟测试', key: '/dry-run' },
   { label: '告警配置', key: '/alerts' },
 ]
 

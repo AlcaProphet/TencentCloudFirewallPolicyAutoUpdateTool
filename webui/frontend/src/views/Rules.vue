@@ -160,7 +160,7 @@ const columns = [
         </NFormItem>
         <NFormItem label="解析IPv6">
           <NSwitch v-model:value="form.enable_ipv6" />
-          <span style="margin-left: 8px; font-size: 12px; color: #999">{{ form.enable_ipv6 ? '同时使用 A + AAAA 记录' : '仅使用 A 记录（IPv4）' }}</span>
+          <span style="margin-left: 8px; font-size: 14px; color: #999">{{ form.enable_ipv6 ? '同时使用 A + AAAA 记录' : '仅使用 A 记录（IPv4）' }}</span>
         </NFormItem>
         <NButton type="primary" @click="saveRule">保存</NButton>
       </NForm>

@@ -10,7 +10,7 @@ const router = createRouter({
     { path: '/rules', component: () => import('./views/Rules.vue') },
     { path: '/settings', component: () => import('./views/Settings.vue') },
     { path: '/logs', component: () => import('./views/Logs.vue') },
-    { path: '/run-test', component: () => import('./views/RunTest.vue') },
+    { path: '/dry-run', component: () => import('./views/RunTest.vue') },
     { path: '/alerts', component: () => import('./views/Alerts.vue') },
   ]
 })

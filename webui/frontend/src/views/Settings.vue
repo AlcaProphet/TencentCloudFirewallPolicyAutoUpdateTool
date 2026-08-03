@@ -217,10 +217,10 @@ async function confirmImport() {
             <NButton type="primary" size="large" :loading="tcScan.loading" @click="runScan(tcScan)">扫描资源</NButton>
             <NButton type="error" tertiary size="large" @click="clearTarget = 'tc'; clearConfirm = true">清空</NButton>
           </NSpace>
-          <p v-if="tcScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ tcScan.error }}</p>
+          <p v-if="tcScan.error" style="color: #d03050; font-size: 14px; margin: 0 0 8px">{{ tcScan.error }}</p>
           <!-- 已扫描资源区（厂商聚合：轻量云 + CVM） -->
           <div :style="{ borderTop: `1px solid ${themeVars.dividerColor}`, paddingTop: '8px' }">
-            <div :style="{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: themeVars.textColor1 }">已扫描的资源</div>
+            <div :style="{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', color: themeVars.textColor1 }">已扫描的资源</div>
             <div v-if="tcAllScanned.length">
               <div :style="{ display: 'flex', gap: '8px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
                 <span style="flex: 0 0 64px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">产品类型</span>
@@ -235,7 +235,7 @@ async function confirmImport() {
                 <span style="flex: 0 0 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.region }}</span>
               </div>
             </div>
-            <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ tcEmptyHint }}</div>
+            <div v-else :style="{ color: themeVars.textColor3, fontSize: '14px' }">{{ tcEmptyHint }}</div>
           </div>
         </NCard>
       </NGi>
@@ -257,10 +257,10 @@ async function confirmImport() {
             <NButton type="primary" size="large" :loading="aliScan.loading" @click="runScan(aliScan)">扫描资源</NButton>
             <NButton type="error" tertiary size="large" @click="clearTarget = 'ali'; clearConfirm = true">清空</NButton>
           </NSpace>
-          <p v-if="aliScan.error" style="color: #d03050; font-size: 12px; margin: 0 0 8px">{{ aliScan.error }}</p>
+          <p v-if="aliScan.error" style="color: #d03050; font-size: 14px; margin: 0 0 8px">{{ aliScan.error }}</p>
           <!-- 已扫描资源区（厂商聚合：轻量云 + ECS） -->
           <div :style="{ borderTop: `1px solid ${themeVars.dividerColor}`, paddingTop: '8px' }">
-            <div :style="{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: themeVars.textColor1 }">已扫描的资源</div>
+            <div :style="{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', color: themeVars.textColor1 }">已扫描的资源</div>
             <div v-if="aliAllScanned.length">
               <div :style="{ display: 'flex', gap: '8px', fontSize: '12px', color: themeVars.textColor3, padding: '2px 0' }">
                 <span style="flex: 0 0 64px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">产品类型</span>
@@ -275,7 +275,7 @@ async function confirmImport() {
                 <span style="flex: 0 0 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.region }}</span>
               </div>
             </div>
-            <div v-else :style="{ color: themeVars.textColor3, fontSize: '12px' }">{{ aliEmptyHint }}</div>
+            <div v-else :style="{ color: themeVars.textColor3, fontSize: '14px' }">{{ aliEmptyHint }}</div>
           </div>
         </NCard>
       </NGi>

@@ -101,7 +101,7 @@ function emptyChange(): RuleChange[] {
             </NAlert>
 
             <template v-else>
-              <div style="font-size: 12px; color: #666; margin-bottom: 4px">待添加</div>
+              <div style="font-size: 14px; color: #666; margin-bottom: 4px">待添加</div>
               <NDataTable
                 :columns="changeColumns"
                 :data="item.to_add?.length ? item.to_add : emptyChange()"
@@ -109,7 +109,7 @@ function emptyChange(): RuleChange[] {
                 size="small"
                 :max-height="200"
               />
-              <div style="font-size: 12px; color: #666; margin: 12px 0 4px">待删除</div>
+              <div style="font-size: 14px; color: #666; margin: 12px 0 4px">待删除</div>
               <NDataTable
                 :columns="changeColumns"
                 :data="item.to_delete?.length ? item.to_delete : emptyChange()"
