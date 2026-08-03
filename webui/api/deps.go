@@ -42,6 +42,10 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/test-connection", d.handleTestConnection)
 	// 地域数据（前端自动补全数据源）
 	mux.HandleFunc("GET /api/zones", d.handleGetZones)
+	// 资源扫描（凭据卡片扫描 + 添加目标自动补全）
+	mux.HandleFunc("POST /api/scan-resources", d.handleScanResources)
+	mux.HandleFunc("GET /api/scanned-resources", d.handleGetScannedResources)
+	mux.HandleFunc("DELETE /api/scanned-resources", d.handleDeleteScannedResources)
 	// 规则管理
 	mux.HandleFunc("GET /api/rules", d.handleGetRules)
 	mux.HandleFunc("POST /api/rules", d.handleAddRule)
@@ -61,6 +65,7 @@ func (d *Deps) Register(mux *http.ServeMux) {
 	// 设置 + 配置导入导出
 	mux.HandleFunc("GET /api/settings", d.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", d.handlePutSettings)
+	mux.HandleFunc("POST /api/config/reset", d.handleConfigReset)
 	mux.HandleFunc("GET /api/config/export", d.handleConfigExport)
 	mux.HandleFunc("POST /api/config/import", d.handleConfigImport)
 	// 告警配置

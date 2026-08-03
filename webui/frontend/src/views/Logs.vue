@@ -16,6 +16,15 @@ const errorDetail = ref<SyncLogEntry | null>(null)
 
 let logEs: EventSource | null = null
 
+// ─── 历史记录加载（挂载与刷新按钮共用） ───
+async function loadLogs() {
+  try {
+    logs.value = await request<SyncLogEntry[]>('/api/sync/logs')
+  } catch (e: any) {
+    message.error(`刷新失败: ${e.message}`)
+  }
+}
+
 // ─── 时间格式化（本地时区，自动检测） ───
 function formatTime(ts: string): string {
   if (!ts) return '-'
@@ -30,12 +39,7 @@ function formatTime(ts: string): string {
 
 // ─── 生命周期 ───
 onMounted(async () => {
-  try {
-    logs.value = await request<SyncLogEntry[]>('/api/sync/logs')
-  } catch (e: any) {
-    // 历史日志加载失败不阻塞 SSE 展示
-    console.warn('加载同步日志失败:', e.message)
-  }
+  await loadLogs()
 
   // SSE 实时日志流（订阅时后端回放最近 1000 条，见 Build4 Step 2）
   logEs = new EventSource('/api/logs/stream')
@@ -93,12 +97,15 @@ const columns = [
     <!-- 历史记录（最顶部，Build4 Step 4：改进 5） -->
     <NSpace justify="space-between" align="center">
       <h3 style="margin: 0">历史记录</h3>
-      <NPopconfirm @positive-click="clearLogs">
-        <template #trigger>
-          <NButton size="small" type="error" tertiary>清空记录</NButton>
-        </template>
-        将清空全部同步历史记录，此操作不可恢复
-      </NPopconfirm>
+      <NSpace>
+        <NButton size="small" @click="loadLogs">刷新</NButton>
+        <NPopconfirm @positive-click="clearLogs">
+          <template #trigger>
+            <NButton size="small" type="error" tertiary>清空记录</NButton>
+          </template>
+          将清空全部同步历史记录，此操作不可恢复
+        </NPopconfirm>
+      </NSpace>
     </NSpace>
     <NDataTable :columns="columns" :data="logs" :bordered="true" :max-height="400" style="margin-top: 12px" />
 

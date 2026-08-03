@@ -14,6 +14,15 @@ export interface ZoneRegion {
   zones: string[]
 }
 
+// ScannedResource 扫描到的云资源（GET /api/scanned-resources，资源 ID 自动补全数据源）
+export interface ScannedResource {
+  id: number
+  cloud_type: string
+  region: string
+  resource_id: string
+  resource_name: string
+}
+
 export interface DomainRule {
   id: number
   host: string

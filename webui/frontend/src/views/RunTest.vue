@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import DryRunResults from '../components/DryRunResults.vue'
 import { useDryRun } from '../composables/useDryRun'
 import { useZones } from '../composables/useZones'
+import { useScannedResources } from '../composables/useScannedResources'
 import { request } from '../api'
 import { cloudOptions, resourceIdHint } from '../constants'
 import type { TestConnectionResult } from '../types'
@@ -27,7 +28,8 @@ async function runDryRun() {
 }
 
 // ─── Tab 2：连接测试（表单内嵌，不抽 composable） ───
-const testForm = ref({ cloud_type: 'tc_lighthouse', region: '', resource_id: '' })
+// resource_id 初始为 null：避免 NSelect tag 模式将空字符串视为已选值导致 placeholder 不显示
+const testForm = ref<{ cloud_type: string; region: string; resource_id: string | null }>({ cloud_type: 'tc_lighthouse', region: '', resource_id: null })
 const testResult = ref('')
 const testLoading = ref(false)
 
@@ -41,7 +43,31 @@ const regionOpts = computed(() => {
   }
   return opts
 })
-onMounted(loadZones)
+
+// 资源 ID 自动补全：扫描结果 + 允许输入任意值（与 Targets.vue 一致）
+const { load: loadScanned, resourceOptions, resourcesOf } = useScannedResources()
+const resourceOpts = computed(() => {
+  const opts = resourceOptions(testForm.value.cloud_type)
+  const cur = testForm.value.resource_id
+  if (cur && !opts.some((o) => o.value === cur)) {
+    opts.push({ label: cur, value: cur })
+  }
+  return opts
+})
+
+// 资源-地域联动：选择扫描出的资源时自动填入其所在区域（与 Targets.vue 一致）
+watch(() => testForm.value.resource_id, (rid) => {
+  if (!rid) return
+  const found = resourcesOf(testForm.value.cloud_type).find((r) => r.resource_id === rid)
+  if (found && found.region) {
+    testForm.value.region = found.region
+  }
+})
+watch(() => testForm.value.cloud_type, (ct) => { loadScanned(ct) })
+onMounted(() => {
+  loadZones()
+  loadScanned(testForm.value.cloud_type)
+})
 
 async function testConnection() {
   testLoading.value = true
@@ -94,7 +120,14 @@ watch(activeTab, (v) => {
       <NTabPane name="connection" tab="连接测试">
         <NSpace vertical style="max-width: 400px">
           <NSelect v-model:value="testForm.cloud_type" :options="cloudOptions" placeholder="选择云产品" />
-          <NInput v-model:value="testForm.resource_id" :placeholder="resourceIdHint(testForm.cloud_type)" />
+          <NSelect
+            v-model:value="testForm.resource_id"
+            :options="resourceOpts"
+            :placeholder="resourceIdHint(testForm.cloud_type)"
+            filterable
+            tag
+            clearable
+          />
           <NSelect
             v-model:value="testForm.region"
             :options="regionOpts"

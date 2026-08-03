@@ -49,6 +49,16 @@ func (d *Deps) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "保存成功"})
 }
 
+// handleConfigReset 清空所有数据，重新初始化（清空目标、规则、凭据、日志、告警与扫描结果）
+func (d *Deps) handleConfigReset(w http.ResponseWriter, r *http.Request) {
+	if err := d.Store.ResetAll(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	d.notifyReload()
+	writeJSON(w, http.StatusOK, map[string]string{"message": "数据已清空，请重新配置"})
+}
+
 // configExport 配置导出结构（凭据不导出）
 type configExport struct {
 	Version  int                   `json:"version"`

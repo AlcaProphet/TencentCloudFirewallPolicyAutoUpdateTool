@@ -6,12 +6,14 @@ import { request } from '../api'
 import { cloudOptions, cloudLabelMap, resourceIdHint } from '../constants'
 import { useSettings } from '../composables/useSettings'
 import { useZones } from '../composables/useZones'
+import { useScannedResources } from '../composables/useScannedResources'
 import type { TargetConfig, TestConnectionResult } from '../types'
 
 const targets = ref<TargetConfig[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
-const form = ref({ cloud_type: 'tc_lighthouse', region: '', resource_id: '' })
+// resource_id 初始为 null：避免 NSelect tag 模式将空字符串视为已选值导致 placeholder 不显示
+const form = ref<{ cloud_type: string; region: string; resource_id: string | null }>({ cloud_type: 'tc_lighthouse', region: '', resource_id: null })
 const testResult = ref('')
 const message = useMessage()
 
@@ -34,9 +36,22 @@ function updateCredWarning() {
 
 // 云类型变化时刷新提示
 watch(() => form.value.cloud_type, updateCredWarning)
+watch(() => form.value.cloud_type, (ct) => { loadScanned(ct) })
 
 // ─── 地域自动补全（改进：GET /api/zones 预填建议，允许输入任意值） ───
 const { load: loadZones, regionOptions } = useZones()
+
+// ─── 资源 ID 自动补全（扫描结果 + 手动输入） ───
+const { load: loadScanned, resourceOptions, resourcesOf } = useScannedResources()
+
+// 资源-地域联动：选择扫描出的资源时自动填入其所在区域（手动输入未匹配不联动）
+watch(() => form.value.resource_id, (rid) => {
+  if (!rid) return
+  const found = resourcesOf(form.value.cloud_type).find((r) => r.resource_id === rid)
+  if (found && found.region) {
+    form.value.region = found.region
+  }
+})
 
 // 地域选项：当前云类型预填列表 + 当前已填值（列表外值时保证编辑回显）
 const regionOpts = computed(() => {
@@ -48,13 +63,17 @@ const regionOpts = computed(() => {
   return opts
 })
 
-// 资源 ID 语义说明（随云类型变化）
-const resourceIdDesc = computed(() => {
-  const ct = form.value.cloud_type
-  return ct === 'tc_lighthouse' || ct === 'ali_swas'
-    ? '轻量云平台：资源 ID 为实例 ID'
-    : 'CVM / ECS 平台：资源 ID 为安全组 ID'
+// 资源 ID 选项：扫描结果 + 当前已填值（保证编辑回显）
+const resourceOpts = computed(() => {
+  const opts = resourceOptions(form.value.cloud_type)
+  const cur = form.value.resource_id
+  if (cur && !opts.some((o) => o.value === cur)) {
+    opts.push({ label: cur, value: cur })
+  }
+  return opts
 })
+
+// 资源 ID 提示由 placeholder 承载（移除 NAlert 说明块，保证表单三项等高对齐）
 
 async function load() {
   try {
@@ -66,13 +85,13 @@ async function load() {
 
 // 挂载：加载目标 + 凭据状态（refreshSettings 强制拉取保证提示新鲜）
 onMounted(async () => {
-  await Promise.all([load(), refreshSettings(), loadZones()])
+  await Promise.all([load(), refreshSettings(), loadZones(), loadScanned(form.value.cloud_type)])
   updateCredWarning()
 })
 
 function openAdd() {
   editingId.value = null
-  form.value = { cloud_type: 'tc_lighthouse', region: '', resource_id: '' }
+  form.value = { cloud_type: 'tc_lighthouse', region: '', resource_id: null }
   showModal.value = true
   updateCredWarning()
 }
@@ -170,10 +189,14 @@ const columns = [
           <NSelect v-model:value="form.cloud_type" :options="cloudOptions" />
         </NFormItem>
         <NFormItem label="资源ID">
-          <NInput v-model:value="form.resource_id" :placeholder="resourceIdHint(form.cloud_type)" />
-          <NAlert type="info" :show-icon="false" style="margin-top: 6px; font-size: 12px">
-            {{ resourceIdDesc }}
-          </NAlert>
+          <NSelect
+            v-model:value="form.resource_id"
+            :options="resourceOpts"
+            :placeholder="resourceIdHint(form.cloud_type)"
+            filterable
+            tag
+            clearable
+          />
         </NFormItem>
         <NFormItem label="地域">
           <NSelect

@@ -54,6 +54,15 @@ type SyncLog struct {
 	Error     string    `json:"error"`
 }
 
+// ScannedResource 扫描到的云资源（用于添加目标时资源 ID 自动补全）
+type ScannedResource struct {
+	ID           int    `json:"id"`
+	CloudType    string `json:"cloud_type"`
+	Region       string `json:"region"`
+	ResourceID   string `json:"resource_id"`
+	ResourceName string `json:"resource_name"`
+}
+
 // OpenStore 打开或创建 SQLite 数据库
 func OpenStore(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
@@ -131,6 +140,14 @@ CREATE TABLE IF NOT EXISTS alert_webhook (
 	enabled INTEGER DEFAULT 0,
 	url TEXT DEFAULT '',
 	channel TEXT DEFAULT 'dingtalk'
+);
+CREATE TABLE IF NOT EXISTS scanned_resources (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	cloud_type TEXT NOT NULL,
+	region TEXT NOT NULL,
+	resource_id TEXT NOT NULL,
+	resource_name TEXT DEFAULT '',
+	scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 `
 	_, err := s.db.Exec(schema)
@@ -284,6 +301,16 @@ func (s *Store) ClearAll() error {
 	return err
 }
 
+// ResetAll 清空全部业务数据（目标、规则、凭据、日志、告警、扫描结果），等效重新初始化
+// 与 ClearAll 的区别：ResetAll 覆盖全部表，用于「清空所有数据」功能
+func (s *Store) ResetAll() error {
+	_, err := s.db.Exec(
+		"DELETE FROM targets; DELETE FROM rules; DELETE FROM settings; DELETE FROM sync_logs;" +
+			"DELETE FROM alert_email; DELETE FROM alert_webhook; DELETE FROM scanned_resources;",
+	)
+	return err
+}
+
 // WithTransaction 在事务中执行操作，失败自动回滚
 func (s *Store) WithTransaction(fn func(tx *sql.Tx) error) error {
 	tx, err := s.db.Begin()
@@ -295,6 +322,52 @@ func (s *Store) WithTransaction(fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ReplaceScannedResources 覆盖式保存某云厂商+地域的扫描结果（先删后插）
+func (s *Store) ReplaceScannedResources(cloudType, region string, resources []ScannedResource) error {
+	return s.WithTransaction(func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM scanned_resources WHERE cloud_type = ? AND region = ?", cloudType, region); err != nil {
+			return fmt.Errorf("清理旧扫描结果失败: %w", err)
+		}
+		for _, r := range resources {
+			if _, err := tx.Exec(
+				"INSERT INTO scanned_resources (cloud_type, region, resource_id, resource_name) VALUES (?, ?, ?, ?)",
+				cloudType, region, r.ResourceID, r.ResourceName,
+			); err != nil {
+				return fmt.Errorf("写入扫描结果失败: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// GetScannedResources 获取某云厂商的扫描结果（跨地域汇总，按 resource_id 排序）
+func (s *Store) GetScannedResources(cloudType string) ([]ScannedResource, error) {
+	rows, err := s.db.Query(
+		"SELECT id, cloud_type, region, resource_id, resource_name FROM scanned_resources WHERE cloud_type = ? ORDER BY resource_id",
+		cloudType,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	resources := make([]ScannedResource, 0)
+	for rows.Next() {
+		var r ScannedResource
+		if err := rows.Scan(&r.ID, &r.CloudType, &r.Region, &r.ResourceID, &r.ResourceName); err != nil {
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
+}
+
+// DeleteScannedResources 清理某云厂商的全部扫描结果
+func (s *Store) DeleteScannedResources(cloudType string) error {
+	_, err := s.db.Exec("DELETE FROM scanned_resources WHERE cloud_type = ?", cloudType)
+	return err
 }
 
 // BatchAddTargets 批量添加目标
